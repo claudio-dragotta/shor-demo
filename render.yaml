@@ -1,0 +1,13 @@
+# Render Blueprint — demo Shor (FastAPI + Qiskit).
+# Deploy: Render → New → Blueprint → seleziona questo repo. Render legge questo file.
+services:
+  - type: web
+    name: shor-demo
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # plan: "starter" = server SEMPRE ATTIVO (~7 $/mese, nessun cold start).
+    # Metti "free" per il gratuito (si spegne dopo ~15 min di inattività, riavvio a freddo).
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true

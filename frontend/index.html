@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fattorizzare con Shor — simulatore</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>⚛️</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div>
+      <div class="eyebrow">◇ Algoritmo di Shor · simulatore</div>
+      <h1>Il circuito e le sue <em>sfere di Bloch</em></h1>
+      <div class="params" id="params"></div>
+    </div>
+    <div class="toggle" id="modeToggle">
+      <button class="on" data-mode="explore">Senza rumore</button>
+      <button data-mode="noise">Con rumore</button>
+    </div>
+  </header>
+
+  <!-- HERO: circuito + bloch collegati -->
+  <section class="panel">
+    <div class="phead">
+      <h2>Dove siamo nel circuito — e come stanno i qubit</h2>
+      <p>La <b style="color:var(--amber)">testina ambra</b> segna lo stadio in esecuzione. Ogni filo del circuito sfocia, a destra, nella <b>sua</b> sfera di Bloch: stessa riga = stesso qubit. Il badge dice cosa sta facendo; il colore della freccia è la <b style="color:var(--orchid)">fase</b>, la sua lunghezza cala quando il qubit è <b>entangled</b>.</p>
+    </div>
+    <div class="stagebar" id="stageBar"><span class="d"></span><span id="stageLabel">…</span></div>
+    <svg class="stage-svg" id="stageSvg" viewBox="0 0 1020 720" role="img" aria-label="Circuito di Shor con sfere di Bloch"></svg>
+    <div class="legend" id="legend">
+      <span class="lg"><i style="background:var(--violet)"></i>Hadamard</span>
+      <span class="lg"><i style="background:var(--amber)"></i>controllo (attivo)</span>
+      <span class="lg"><i style="background:var(--orchid)"></i>fase / QFT⁻¹</span>
+      <span class="lg"><i style="background:var(--cyan)"></i>entangled</span>
+      <span class="lg"><i style="background:var(--good)"></i>misura ✓</span>
+      <span class="lg"><i style="background:var(--bad)"></i>misura ✗</span>
+    </div>
+    <div id="classicalBanner" class="classban" style="display:none"></div>
+  </section>
+
+  <!-- CONTROL BAR -->
+  <section class="panel">
+    <div class="controlbar">
+      <div class="cg">
+        <span class="clab">N</span>
+        <input class="num sm" id="Ninput" type="number" min="4" max="100000" value="15" aria-label="Numero da fattorizzare">
+        <button class="btn" id="startBtn">▶ Avvia</button>
+      </div>
+      <span class="vsep"></span>
+      <div class="cg">
+        <button class="btn soft" id="resetBtn" title="Torna all'inizio">↺ Reset</button>
+        <button class="btn soft" id="nextBtn" title="Stadio successivo">Avanti ▶</button>
+        <span class="cmini" id="stageNum">stadio 0 / 0</span>
+      </div>
+      <span class="vsep"></span>
+      <div class="cg noise-only" id="noiseGroup" style="display:none">
+        <span class="clab">rumore</span>
+        <div class="pills" id="noisePills">
+          <span class="pill on" data-noise="uc1">UC1 realistico</span>
+          <span class="pill" data-noise="uc2">UC2 degradato</span>
+        </div>
+      </div>
+      <div class="cg">
+        <span class="clab">iterazioni</span>
+        <div class="pills" id="shotPills">
+          <span class="pill" data-shots="10">10</span>
+          <span class="pill on" data-shots="100">100</span>
+          <span class="pill" data-shots="1000">1000</span>
+          <span class="pill" data-shots="5000">5000</span>
+        </div>
+        <button class="btn ok" id="runBtn">▶ Esegui</button>
+      </div>
+      <div class="psbox" id="psbox" title="Percentuale di successo dell'ultima statistica">
+        <div class="pslab">Sicurezza · P(successo)</div>
+        <div class="psval" id="psval">—</div>
+      </div>
+    </div>
+    <div id="factorMsg"></div>
+  </section>
+
+  <!-- ESITO: le X iterazioni e i loro risultati -->
+  <section class="panel" id="resultPanel">
+    <div class="phead"><h2>Le iterazioni e i loro risultati</h2><p>Shor è probabilistico: una sola misura spesso non basta. Esegui molte iterazioni e guarda quale porta ai fattori.</p></div>
+    <div class="pbody" id="resultBody">
+      <div class="msg">Premi <b>Esegui</b> per lanciare le iterazioni e vederle una per una.</div>
+    </div>
+  </section>
+</div>
+<div class="modal" id="measureModal" style="display:none"><div class="modal-card" id="measureCard"></div></div>
+<script src="app.js"></script>
+</body>
+</html>
