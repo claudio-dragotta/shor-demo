@@ -29,6 +29,8 @@ starter` = always-on; change to `free` for the spin-down free tier). Or **New â†
 
 `$PORT` is injected automatically; health check at `/health`.
 
+**Auto-deploy:** `autoDeploy` is on, so every push to `main` redeploys.
+
 ## What it does
 
 - **Senza rumore**: one run at a time â€” the playhead sweeps the circuit, the Bloch spheres
