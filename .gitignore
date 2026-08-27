@@ -11,3 +11,8 @@ htmlcov/
 .env
 .env.*
 !.env.example
+
+# Strumentario locale di commit e deploy: resta sulla macchina dell'autore,
+# non e' parte della demo e non ha ragione di stare in un repository pubblico.
+.githooks/
+scripts/
