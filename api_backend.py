@@ -1,9 +1,9 @@
 """Logica applicativa della demo FastAPI di Shor.
 
-La versione 2 espone intenzionalmente solo il caso didattico verificato ``N=15, a=7`` con
-otto qubit di conteggio. Le istanze Beauregard N=21/35 sono validate separatamente, ma
-restano fuori dall'API pubblica per il loro costo di simulazione. Il modulo mantiene la vista
-di Bloch ideale e aggiunge
+La versione 3 espone le istanze validate ``N=15,21,35``. Il modulo mantiene la vista
+di Bloch ideale per N=15 e, per i circuiti Beauregard piu' grandi, mostra la struttura del
+circuito e campiona la legge QPE ideale esatta senza materializzare uno statevector enorme.
+Inoltre aggiunge
 un confronto riproducibile ideale/rumoroso basato sulla memoria reale di Aer.
 
 Perche' lo stato di Bloch e' onesto anche sotto entanglement: lo stato del singolo qubit e' la
@@ -19,6 +19,7 @@ import importlib.metadata
 import math
 import platform
 import secrets
+from functools import lru_cache
 
 import numpy as np
 
@@ -31,7 +32,9 @@ from experiment_backend import (
     MAX_SHOTS,
     N_COUNT_FIXED,
     N_FIXED,
+    INSTANCE_CONFIGS,
     SimulationUnavailable,
+    instance_config,
     run_pair_isolated,
 )
 
@@ -81,34 +84,101 @@ BLOCH_MAX_QUBITS = 16
 
 
 def validate_instance(N: int, a: int | None = None, n_count: int | None = None) -> None:
-    """Mantiene gli endpoint nel solo perimetro interattivo, indipendentemente dalla validazione."""
-    if type(N) is not int or N != N_FIXED:
-        raise ValueError("La demo web interattiva supporta esclusivamente N=15.")
-    if a is not None and (type(a) is not int or a != A_FIXED):
-        raise ValueError("Per l'istanza web N=15 la base deve essere a=7.")
-    if n_count is not None and (type(n_count) is not int or n_count != N_COUNT_FIXED):
-        raise ValueError("Per l'istanza web il registro di conteggio deve avere 8 qubit.")
+    """Mantiene gli endpoint nel perimetro delle tre istanze validate."""
+    instance = instance_config(N)
+    if a is not None and (type(a) is not int or a != instance["a"]):
+        raise ValueError(f"Per N={N} la base validata deve essere a={instance['a']}.")
+    if n_count is not None and (
+        type(n_count) is not int or n_count != instance["n_count"]
+    ):
+        raise ValueError(
+            f"Per N={N} il registro di conteggio deve avere {instance['n_count']} qubit."
+        )
+
+
+@lru_cache(maxsize=None)
+def _theoretical_distribution(N: int) -> tuple[float, ...]:
+    """Legge QPE esatta a registro finito, mediata sulle autofasi dell'ordine."""
+    instance = instance_config(N)
+    dimension = 2 ** instance["n_count"]
+    order = instance["order"]
+    probabilities = []
+    for measured in range(dimension):
+        probability = 0.0
+        for eigenphase_index in range(order):
+            delta = eigenphase_index / order - measured / dimension
+            denominator = math.sin(math.pi * delta)
+            if abs(denominator) < 1e-14:
+                geometric_sum_squared = dimension ** 2
+            else:
+                geometric_sum_squared = (
+                    math.sin(math.pi * dimension * delta) / denominator
+                ) ** 2
+            probability += geometric_sum_squared / (order * dimension ** 2)
+        probabilities.append(probability)
+    total = sum(probabilities)
+    return tuple(value / total for value in probabilities)
+
+
+@lru_cache(maxsize=None)
+def _outcome_info(N: int) -> tuple[tuple[bool, tuple[int, int] | None], ...]:
+    instance = instance_config(N)
+    rows = []
+    for value in range(2 ** instance["n_count"]):
+        p, q = extract_factors(value, instance["n_count"], N, instance["a"])
+        ok = p is not None and q is not None and p * q == N
+        rows.append((ok, tuple(sorted((int(p), int(q)))) if ok else None))
+    return tuple(rows)
+
+
+def _instance_theory(N: int) -> dict:
+    instance = instance_config(N)
+    dimension = 2 ** instance["n_count"]
+    peaks = tuple(sorted({round(k * dimension / instance["order"]) for k in range(instance["order"])}))
+    outcomes = _outcome_info(N)
+    useful_peaks = tuple(value for value in peaks if outcomes[value][0])
+    probabilities = _theoretical_distribution(N)
+    ideal_factor_yield = sum(
+        probability for probability, (ok, _) in zip(probabilities, outcomes) if ok
+    )
+    successful_outcomes = sum(1 for ok, _ in outcomes if ok)
+    return {
+        "dimension": dimension,
+        "theoretical_peaks": peaks,
+        "useful_peaks": useful_peaks,
+        "ideal_factor_yield": ideal_factor_yield,
+        "random_factor_floor": successful_outcomes / dimension,
+        "successful_outcomes": successful_outcomes,
+    }
 
 
 # ---------------------------------------------------------------------------
 # Fattorizzazione: pre-processing classico + metadati del circuito
 # ---------------------------------------------------------------------------
 def factor_info(N: int, seed: int | None = None) -> dict:
-    """Configurazione e struttura dell'unica istanza esposta in modo interattivo."""
+    """Configurazione e struttura di una delle tre istanze validate."""
     del seed  # mantenuto nella firma per compatibilita' con chiamanti locali precedenti
     validate_instance(N)
-    qc = sg.build_circuit(N_FIXED, A_FIXED, N_COUNT_FIXED)
-    stages = _stages(qc, N_COUNT_FIXED)
+    instance = instance_config(N)
+    theory = _instance_theory(N)
+    qc = sg.build_circuit(N, instance["a"], instance["n_count"])
+    stages = _stages(qc, instance["n_count"])
     return {
-        "N": N_FIXED,
+        "N": N,
         "done": False,
-        "a": A_FIXED,
-        "n_count": N_COUNT_FIXED,
+        "a": instance["a"],
+        "n_count": instance["n_count"],
+        "order": instance["order"],
         "num_qubits": qc.num_qubits,
         "validated": True,
-        "validation_scope": "N=15, a=7, n_count=8",
+        "validation_scope": (
+            f"N={N}, a={instance['a']}, n_count={instance['n_count']}"
+        ),
         "n_stages": len(stages),
         "bloch_ok": qc.num_qubits <= BLOCH_MAX_QUBITS,
+        "max_shots": instance["max_shots"],
+        "implementation": instance["implementation"],
+        **theory,
         "stages": [{"label": s["label"], "kind": s["kind"], "control": s["control"]} for s in stages],
     }
 
@@ -208,12 +278,13 @@ def bloch_at(N: int, a: int, n_count: int, stage: int, seed: int | None = None) 
     """Stato dei qubit di conteggio allo stadio `stage`: vettore di Bloch reale + operazione in
     corso + (alla misura) il bit collassato. `stage` 0..n_stages-1."""
     validate_instance(N, a, n_count)
+    instance = instance_config(N)
     if type(stage) is not int or stage < 0:
         raise ValueError("Lo stadio deve essere un intero non negativo.")
-    qc = sg.build_circuit(N_FIXED, A_FIXED, N_COUNT_FIXED)
+    qc = sg.build_circuit(N, instance["a"], instance["n_count"])
     if qc.num_qubits > BLOCH_MAX_QUBITS:
         raise ValueError(f"Circuito troppo grande ({qc.num_qubits} qubit) per la vista "
-                         "stato-per-stato. Disponibile per N piccoli come 15.")
+                         "stato-per-stato. Per N=21/35 usa la vista strutturale del circuito.")
     stages = _stages(qc, n_count)
     if stage >= len(stages):
         raise ValueError(f"Stadio non valido: usa un valore tra 0 e {len(stages) - 1}.")
@@ -235,8 +306,8 @@ def bloch_at(N: int, a: int, n_count: int, stage: int, seed: int | None = None) 
         mem = sv.sample_memory(1, qargs=list(range(n_count)))[0]  # little-endian
         bits = mem[::-1]  # bits[i] = qubit i
         val = int(mem, 2)
-        p, q = extract_factors(val, N_COUNT_FIXED, N_FIXED, A_FIXED)
-        ok = p is not None and p * q == N_FIXED
+        p, q = extract_factors(val, n_count, N, a)
+        ok = p is not None and p * q == N
         measured_shot = {"value": val, "bits": mem, "ok": ok, "p": p, "q": q}
     else:
         sv = _statevector_upto(qc, st["end"])
@@ -282,17 +353,42 @@ def bloch_at(N: int, a: int, n_count: int, stage: int, seed: int | None = None) 
     }
 
 
+def ideal_sample(N: int, seed: int | None = None) -> dict:
+    """Campiona un esito dalla legge QPE ideale esatta senza costruire lo statevector.
+
+    Per N=21/35 questa e' la controparte scalabile della misura nella vista Bloch di N=15.
+    La distribuzione usata e' la stessa legge a registro finito verificata end-to-end contro Aer.
+    """
+    validate_instance(N)
+    effective_seed = _validate_shots_seed(1, seed, min_shots=1)
+    instance = instance_config(N)
+    rng = np.random.default_rng(effective_seed)
+    value = int(rng.choice(len(_theoretical_distribution(N)), p=_theoretical_distribution(N)))
+    p, q = extract_factors(value, instance["n_count"], N, instance["a"])
+    ok = p is not None and q is not None and p * q == N
+    return {
+        "N": N,
+        "a": instance["a"],
+        "n_count": instance["n_count"],
+        "seed": effective_seed,
+        "source": "exact_finite_register_qpe_law",
+        "measured_shot": {
+            "value": value,
+            "bits": format(value, f"0{instance['n_count']}b"),
+            "ok": ok,
+            "p": int(p) if ok else None,
+            "q": int(q) if ok else None,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Esperimento v2: memoria reale, distribuzione completa e metriche scientifiche
 # ---------------------------------------------------------------------------
 ITER_SHOWN_MAX = 80
-_OUTCOME_INFO: dict[int, tuple[bool, list[int] | None]] = {}
-for _value in range(2 ** N_COUNT_FIXED):
-    _p, _q = extract_factors(_value, N_COUNT_FIXED, N_FIXED, A_FIXED)
-    _ok = _p is not None and _q is not None and _p * _q == N_FIXED
-    _OUTCOME_INFO[_value] = (_ok, sorted([int(_p), int(_q)]) if _ok else None)
-_RANDOM_SUCCESSFUL_OUTCOMES = sum(1 for _ok, _ in _OUTCOME_INFO.values() if _ok)
-RANDOM_FACTOR_FLOOR = _RANDOM_SUCCESSFUL_OUTCOMES / (2 ** N_COUNT_FIXED)
+_N15_THEORY = _instance_theory(N_FIXED)
+_RANDOM_SUCCESSFUL_OUTCOMES = _N15_THEORY["successful_outcomes"]
+RANDOM_FACTOR_FLOOR = _N15_THEORY["random_factor_floor"]
 
 
 def _validate_shots_seed(shots: int, seed: int | None, *, min_shots: int) -> int:
@@ -365,52 +461,56 @@ def _wilson_interval(successes: int, total: int) -> dict:
     }
 
 
-def _analyse_memory(memory: list[str]) -> dict:
+def _analyse_memory(memory: list[str], N: int) -> dict:
+    instance = instance_config(N)
+    n_count = instance["n_count"]
+    theory = _instance_theory(N)
+    outcome_info = _outcome_info(N)
     shots = len(memory)
     if shots <= 0:
         raise SimulationUnavailable("Simulazione temporaneamente non disponibile.")
-    counts = [0] * (2 ** N_COUNT_FIXED)
+    counts = [0] * (2 ** n_count)
     values = []
     for raw in memory:
         bits = str(raw).replace(" ", "")
-        if len(bits) != N_COUNT_FIXED or set(bits) - {"0", "1"}:
+        if len(bits) != n_count or set(bits) - {"0", "1"}:
             raise SimulationUnavailable("Simulazione temporaneamente non disponibile.")
         value = int(bits, 2)
         values.append((bits, value))
         counts[value] += 1
 
-    n_ok = sum(counts[value] for value, (ok, _) in _OUTCOME_INFO.items() if ok)
-    found_at = next((i for i, (_, value) in enumerate(values, 1) if _OUTCOME_INFO[value][0]), None)
+    n_ok = sum(counts[value] for value, (ok, _) in enumerate(outcome_info) if ok)
+    found_at = next((i for i, (_, value) in enumerate(values, 1) if outcome_info[value][0]), None)
     factors_found = None
     if found_at is not None:
-        factors_found = list(_OUTCOME_INFO[values[found_at - 1][1]][1])
+        factors_found = list(outcome_info[values[found_at - 1][1]][1])
     top_value = max(range(len(counts)), key=lambda value: counts[value])
-    modal_factors = _OUTCOME_INFO[top_value][1]
+    modal_factors = outcome_info[top_value][1]
 
     probabilities = [count / shots for count in counts]
     entropy = -sum(p * math.log2(p) for p in probabilities if p > 0)
-    peak_mass = sum(counts[v] for v in THEORETICAL_PEAKS) / shots
-    useful_peak_mass = sum(counts[v] for v in USEFUL_PEAKS) / shots
+    peak_mass = sum(counts[v] for v in theory["theoretical_peaks"]) / shots
+    useful_peak_mass = sum(counts[v] for v in theory["useful_peaks"]) / shots
 
     distribution = []
     for value, count in enumerate(counts):
-        ok, factors = _OUTCOME_INFO[value]
+        ok, factors = outcome_info[value]
         distribution.append(
             {
                 "value": value,
-                "bits": format(value, f"0{N_COUNT_FIXED}b"),
+                "bits": format(value, f"0{n_count}b"),
                 "count": count,
                 "probability": count / shots,
                 "factor_success": ok,
                 "factors": list(factors) if factors else None,
-                "theoretical_peak": value in THEORETICAL_PEAKS,
-                "useful_peak": value in USEFUL_PEAKS,
+                "theoretical_peak": value in theory["theoretical_peaks"],
+                "useful_peak": value in theory["useful_peaks"],
             }
         )
 
     iterations = []
     for shot, (bits, value) in enumerate(values[:ITER_SHOWN_MAX], 1):
-        ok, factors = _OUTCOME_INFO[value]
+        ok, factors = outcome_info[value]
         iterations.append(
             {
                 "shot": shot,
@@ -488,23 +588,33 @@ def _package_version(name: str) -> str | None:
         return None
 
 
-def _experiment(shots: int, seed: int | None, noise: dict | None, *, min_shots: int) -> dict:
+def _experiment(
+    N: int, shots: int, seed: int | None, noise: dict | None, *, min_shots: int
+) -> dict:
+    validate_instance(N)
+    instance = instance_config(N)
+    if type(shots) is not int or shots > instance["max_shots"]:
+        raise ValueError(
+            f"shots deve essere un intero tra {min_shots} e {instance['max_shots']} per N={N}."
+        )
     effective_seed = _validate_shots_seed(shots, seed, min_shots=min_shots)
     config = normalise_noise_config(noise)
-    raw = run_pair_isolated(shots=shots, seed=effective_seed, noise=config)
-    ideal = _analyse_memory(raw["ideal_memory"])
-    noisy = _analyse_memory(raw["noisy_memory"])
+    theory = _instance_theory(N)
+    raw = run_pair_isolated(N=N, shots=shots, seed=effective_seed, noise=config)
+    ideal = _analyse_memory(raw["ideal_memory"], N)
+    noisy = _analyse_memory(raw["noisy_memory"], N)
     random_floor = {
-        "probability": RANDOM_FACTOR_FLOOR,
-        "successful_outcomes": _RANDOM_SUCCESSFUL_OUTCOMES,
-        "total_outcomes": 2 ** N_COUNT_FIXED,
+        "probability": theory["random_factor_floor"],
+        "successful_outcomes": theory["successful_outcomes"],
+        "total_outcomes": theory["dimension"],
     }
     return {
         "schema_version": "2.0",
         "config": {
-            "N": N_FIXED,
-            "a": A_FIXED,
-            "n_count": N_COUNT_FIXED,
+            "N": N,
+            "a": instance["a"],
+            "n_count": instance["n_count"],
+            "order": instance["order"],
             "shots": shots,
             "seed": effective_seed,
             "noise": config,
@@ -517,7 +627,7 @@ def _experiment(shots: int, seed: int | None, noise: dict | None, *, min_shots: 
                 for value in config.values()
             )
         ),
-        "random_factor_floor": RANDOM_FACTOR_FLOOR,
+        "random_factor_floor": theory["random_factor_floor"],
         "metadata": {
             "versions": {
                 "python": platform.python_version(),
@@ -538,17 +648,21 @@ def _experiment(shots: int, seed: int | None, noise: dict | None, *, min_shots: 
                 "virtual_rz": True,
                 "coherent_error": "sovrarotazione RX(delta) solo dopo le porte fisiche sx/x",
             },
-            "circuit_implementation": "n15-a7-textbook-orbit-v2",
-            "theoretical_peaks": list(THEORETICAL_PEAKS),
-            "useful_peaks": list(USEFUL_PEAKS),
+            "data_source": "live_qiskit_aer_mps",
+            "circuit_implementation": instance["implementation"],
+            "theoretical_peaks": list(theory["theoretical_peaks"]),
+            "useful_peaks": list(theory["useful_peaks"]),
+            "ideal_factor_yield_theoretical": theory["ideal_factor_yield"],
             "random_factor_floor": random_floor,
         },
     }
 
 
-def run_experiment(shots: int, seed: int | None = None, noise: dict | None = None) -> dict:
-    """Contratto v2 pubblico; gli shot ammessi sono 10..2048."""
-    return _experiment(shots, seed, noise, min_shots=10)
+def run_experiment(
+    shots: int, seed: int | None = None, noise: dict | None = None, N: int = N_FIXED
+) -> dict:
+    """Contratto v3 pubblico; 10..2048 shot per N=15, 10..128 per N=21/35."""
+    return _experiment(N, shots, seed, noise, min_shots=10)
 
 
 def run_stats(N: int, a: int, n_count: int, noise: str, shots: int, seed: int = 42) -> dict:
@@ -556,7 +670,7 @@ def run_stats(N: int, a: int, n_count: int, noise: str, shots: int, seed: int = 
     validate_instance(N, a, n_count)
     if noise not in NOISE_PRESETS:
         raise ValueError("noise deve essere uno tra: none, uc1, uc2.")
-    experiment = _experiment(shots, seed, NOISE_PRESETS[noise], min_shots=1)
+    experiment = _experiment(N, shots, seed, NOISE_PRESETS[noise], min_shots=1)
     selected = experiment["ideal"] if noise == "none" else experiment["noisy"]
     ranked = sorted(
         (row for row in selected["distribution"] if row["count"] > 0),
@@ -596,7 +710,7 @@ def run_stats(N: int, a: int, n_count: int, noise: str, shots: int, seed: int = 
             "peak_mass": selected["peak_mass"],
             "useful_peak_mass": selected["useful_peak_mass"],
             "entropy_bits": selected["entropy_bits"],
-            "random_factor_floor": RANDOM_FACTOR_FLOOR,
+            "random_factor_floor": experiment["random_factor_floor"],
         },
         "metadata": experiment["metadata"],
     }

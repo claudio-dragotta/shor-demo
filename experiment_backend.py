@@ -1,7 +1,8 @@
-"""Motore isolato per gli esperimenti della demo Shor v2.
+"""Motore isolato per gli esperimenti della demo Shor v3.
 
-La demo pubblica espone intenzionalmente una sola istanza didattica verificata:
-``N=15, a=7, n_count=8``.  Aer viene eseguito in un sottoprocesso per non portare
+La demo pubblica espone tre istanze didattiche verificate: ``N=15,21,35``.
+Base e numero di qubit di conteggio sono scelti esclusivamente dal server. Aer viene
+eseguito in un sottoprocesso per non portare
 eventuali crash nativi nel worker ASGI e, soprattutto, con ``memory=True``: la sequenza
 degli shot restituita all'interfaccia e' quindi quella reale, non una ricostruzione casuale
 dei conteggi aggregati.
@@ -29,6 +30,23 @@ N_FIXED = 15
 A_FIXED = 7
 N_COUNT_FIXED = 8
 MAX_SHOTS = 2048
+LARGE_INSTANCE_MAX_SHOTS = 128
+INSTANCE_CONFIGS = {
+    15: {
+        "N": 15, "a": 7, "n_count": 8, "order": 4,
+        "max_shots": MAX_SHOTS, "implementation": "n15-a7-textbook-orbit-v3",
+    },
+    21: {
+        "N": 21, "a": 2, "n_count": 10, "order": 6,
+        "max_shots": LARGE_INSTANCE_MAX_SHOTS,
+        "implementation": "n21-a2-beauregard-validated-v3",
+    },
+    35: {
+        "N": 35, "a": 6, "n_count": 12, "order": 2,
+        "max_shots": LARGE_INSTANCE_MAX_SHOTS,
+        "implementation": "n35-a6-beauregard-validated-v3",
+    },
+}
 BASIS_GATES = ["rz", "sx", "x", "cx"]
 SEED_TRANSPILER = 20260819
 GATE_TIME_1Q_NS = 50.0
@@ -38,6 +56,13 @@ LOGGER = logging.getLogger(__name__)
 
 class SimulationUnavailable(RuntimeError):
     """Errore pubblico e deliberatamente privo di dettagli interni del worker."""
+
+
+def instance_config(N: int) -> dict[str, Any]:
+    """Restituisce una copia della configurazione validata, senza accettare a/t dal client."""
+    if type(N) is not int or N not in INSTANCE_CONFIGS:
+        raise ValueError("N deve essere una delle istanze validate: 15, 21 oppure 35.")
+    return dict(INSTANCE_CONFIGS[N])
 
 
 def noise_is_active(config: dict[str, Any]) -> bool:
@@ -131,12 +156,12 @@ def build_illustrative_noise_model(config: dict[str, Any]):
     return model
 
 
-def _normalise_memory(memory: list[str]) -> list[str]:
-    """Aer puo' separare piu' registri con spazi; qui esiste un solo registro da 8 bit."""
+def _normalise_memory(memory: list[str], n_count: int) -> list[str]:
+    """Aer puo' separare piu' registri con spazi; qui ne esiste uno da ``n_count`` bit."""
     clean = []
     for item in memory:
         bits = str(item).replace(" ", "")
-        clean.append(bits.zfill(N_COUNT_FIXED)[-N_COUNT_FIXED:])
+        clean.append(bits.zfill(n_count)[-n_count:])
     return clean
 
 
@@ -161,13 +186,21 @@ def _simulate(payload: dict[str, Any]) -> dict[str, Any]:
     shots = int(payload["shots"])
     seed = int(payload["seed"])
     noise = dict(payload["noise"])
+    instance = instance_config(int(payload["N"]))
+    N = instance["N"]
+    a = instance["a"]
+    n_count = instance["n_count"]
+    if shots > instance["max_shots"]:
+        raise ValueError(
+            f"Per N={N} il massimo e' {instance['max_shots']} shot per esecuzione."
+        )
     active = noise_is_active(noise)
     # Baseline e campione rumoroso devono essere riproducibili ma statisticamente
     # indipendenti: usare lo stesso seed in due simulatori con flussi RNG diversi
     # crea una correlazione opaca e rende scorretto l'IC Newcombe indipendente.
     noisy_seed = (seed + 1_000_003) % (2 ** 31)
 
-    base = sg.build_circuit(N_FIXED, A_FIXED, N_COUNT_FIXED)
+    base = sg.build_circuit(N, a, n_count)
     # Decomposizione esplicita: nessuna CCX/CP opaca puo' sfuggire a eps_2q.
     transpiled = transpile(
         base,
@@ -183,7 +216,7 @@ def _simulate(payload: dict[str, Any]) -> dict[str, Any]:
         seed_simulator=seed,
         memory=True,
     ).result()
-    ideal_memory = _normalise_memory(ideal_result.get_memory())
+    ideal_memory = _normalise_memory(ideal_result.get_memory(), n_count)
 
     if active:
         noisy_simulator = AerSimulator(
@@ -196,7 +229,7 @@ def _simulate(payload: dict[str, Any]) -> dict[str, Any]:
             seed_simulator=noisy_seed,
             memory=True,
         ).result()
-        noisy_memory = _normalise_memory(noisy_result.get_memory())
+        noisy_memory = _normalise_memory(noisy_result.get_memory(), n_count)
     else:
         # Zero rumore significa davvero la stessa baseline, non un secondo campione casuale.
         noisy_memory = list(ideal_memory)
@@ -220,22 +253,36 @@ def _simulate(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def run_pair_isolated(
-    *, shots: int, seed: int, noise: dict[str, Any], timeout_seconds: float | None = None
+    *, N: int = N_FIXED, shots: int, seed: int, noise: dict[str, Any],
+    timeout_seconds: float | None = None
 ) -> dict[str, Any]:
     """Esegue baseline e run rumoroso senza propagare stderr/traceback al chiamante."""
     active = noise_is_active(noise)
+    instance = instance_config(N)
+    if type(shots) is not int or shots < 1 or shots > instance["max_shots"]:
+        raise ValueError(
+            f"shots deve essere un intero tra 1 e {instance['max_shots']} per N={N}."
+        )
     run_id = uuid.uuid4().hex[:12]
     if timeout_seconds is None:
         # Il caso rumoroso usa traiettorie stocastiche e scala con gli shot. Il tetto
         # pubblico e questo timeout impediscono a un worker guasto di monopolizzare il servizio.
-        timeout_seconds = min(
-            120.0,
-            max(60.0, 30.0 + shots * (0.04 if active else 0.015)),
-        )
+        if N == N_FIXED:
+            timeout_seconds = min(
+                120.0,
+                max(60.0, 30.0 + shots * (0.04 if active else 0.015)),
+            )
+        else:
+            # Le istanze Beauregard sono molto piu' profonde. Il limite di shot e il
+            # sottoprocesso impediscono che un run costoso blocchi stabilmente Render.
+            timeout_seconds = min(
+                180.0,
+                max(75.0, 35.0 + shots * (0.75 if active else 0.18)),
+            )
     try:
         process = subprocess.run(
             [sys.executable, os.path.abspath(__file__), "--worker"],
-            input=json.dumps({"shots": shots, "seed": seed, "noise": noise}),
+            input=json.dumps({"N": N, "shots": shots, "seed": seed, "noise": noise}),
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
