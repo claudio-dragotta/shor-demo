@@ -69,12 +69,18 @@ class ExperimentRequest(BaseModel):
 
 
 @app.middleware("http")
-async def no_cache(request, call_next):
-    # Il frontend cambia spesso durante lo sviluppo: forziamo il browser a non usare la cache,
-    # così ogni refresh prende l'ultima versione di app.js/style.css/index.html.
+async def no_cache_api(request, call_next):
+    """Vieta la cache alle risposte dell'API, non agli asset statici.
+
+    Le risposte di /api/* dipendono da seed e rumore: riusarle sarebbe sbagliato.
+    Gli asset invece cambiano solo a ogni deploy, e ``StaticFiles`` emette gia'
+    ETag e Last-Modified: il browser li rivalida e riceve 304 finche' non
+    cambiano, cosi' un visitatore non riscarica app.js a ogni caricamento.
+    Nessun ``max-age`` fisso, che dopo un deploy servirebbe file scaduti.
+    """
     resp = await call_next(request)
-    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    resp.headers["Pragma"] = "no-cache"
+    if request.url.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store"
     return resp
 
 _HERE = os.path.dirname(os.path.abspath(__file__))

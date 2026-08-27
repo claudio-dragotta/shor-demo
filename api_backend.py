@@ -102,6 +102,26 @@ def _outcome_info(N: int) -> tuple[tuple[bool, tuple[int, int] | None], ...]:
     return tuple(rows)
 
 
+@lru_cache(maxsize=None)
+def _instance_circuit(N: int):
+    """Il circuito di un'istanza validata e' deterministico, e le istanze sono tre.
+
+    Costruirlo a ogni richiesta costava circa mezzo secondo di CPU per N=21 su una
+    GET pubblica priva del semaforo che protegge /api/experiment. I chiamanti lo
+    leggono soltanto: ``_statevector_upto`` ricopia le istruzioni in un circuito
+    nuovo e non tocca questo. Condividerlo e' quindi sicuro.
+    """
+    instance = instance_config(N)
+    return sg.build_circuit(N, instance["a"], instance["n_count"])
+
+
+@lru_cache(maxsize=None)
+def _instance_stages(N: int) -> list[dict]:
+    """Stessa ragione: dipende solo da N. Restituita per sola lettura."""
+    instance = instance_config(N)
+    return _stages(_instance_circuit(N), instance["n_count"])
+
+
 def _instance_theory(N: int) -> dict:
     instance = instance_config(N)
     dimension = 2 ** instance["n_count"]
@@ -140,8 +160,8 @@ def factor_info(N: int, seed: int | None = None) -> dict:
     validate_instance(N)
     instance = instance_config(N)
     theory = _instance_theory(N)
-    qc = sg.build_circuit(N, instance["a"], instance["n_count"])
-    stages = _stages(qc, instance["n_count"])
+    qc = _instance_circuit(N)
+    stages = _instance_stages(N)
     return {
         "N": N,
         "done": False,
@@ -261,11 +281,11 @@ def bloch_at(N: int, a: int, n_count: int, stage: int, seed: int | None = None) 
     instance = instance_config(N)
     if type(stage) is not int or stage < 0:
         raise ValueError("Lo stadio deve essere un intero non negativo.")
-    qc = sg.build_circuit(N, instance["a"], instance["n_count"])
+    qc = _instance_circuit(N)
     if qc.num_qubits > BLOCH_MAX_QUBITS:
         raise ValueError(f"Circuito troppo grande ({qc.num_qubits} qubit) per la vista "
                          "stato-per-stato. Per N=21/35 usa la vista strutturale del circuito.")
-    stages = _stages(qc, n_count)
+    stages = _instance_stages(N)
     if stage >= len(stages):
         raise ValueError(f"Stadio non valido: usa un valore tra 0 e {len(stages) - 1}.")
     st = stages[stage]
