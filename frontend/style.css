@@ -100,13 +100,9 @@ button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity:
   text-wrap: balance;
 }
 .site-header h1 em { color: var(--amber); font-weight: 500; }
-.instance-control {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 16px;
-}
-.instance-control label { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: .64rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
-.instance-control select { min-width: 190px; border-color: rgba(100,213,223,.45); color: var(--cyan); font: 750 .86rem/1 var(--mono); }
+/* Primo controllo della riga: si sceglie il numero, poi si avvia. */
+.instance-control { display: grid; gap: 5px; color: var(--dim); font-size: .62rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.instance-control select { min-width: 104px; border-color: rgba(100,213,223,.45); color: var(--cyan); font: 750 .86rem/1 var(--mono); }
 
 .button {
   display: inline-flex;
@@ -199,7 +195,24 @@ button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity:
 .instance-badges small { margin-bottom: 3px; color: var(--dim); font-size: .61rem; text-transform: uppercase; letter-spacing: .08em; }
 .instance-badges b { font: 700 .78rem/1.2 var(--mono); }
 .transport { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
-.stage-picker { display: grid; gap: 5px; margin-left: auto; color: var(--muted); font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.stage-nav { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  min-height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--text);
+  background: rgba(19, 21, 34, .76);
+  font-size: .78rem;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.icon-button:not(:disabled):hover { border-color: var(--violet); background: rgba(35, 37, 56, .95); }
+.icon-button:disabled { opacity: .38; cursor: not-allowed; }
+.stage-counter { min-width: 64px; text-align: center; color: var(--muted); font: 700 .78rem/1 var(--mono); }
 select, input[type="number"] {
   min-height: 42px;
   border: 1px solid var(--line-strong);
@@ -208,14 +221,14 @@ select, input[type="number"] {
   color: var(--text);
   background: #111320;
 }
-.stage-picker select { min-width: min(300px, 65vw); font-size: .78rem; text-transform: none; letter-spacing: 0; }
 .status-line { min-height: 1.3em; margin: 12px 0 0; color: var(--dim); font-size: .75rem; }
 .status-line.is-loading::before { content: ""; display: inline-block; width: 11px; height: 11px; margin-right: 8px; border: 2px solid rgba(169,146,255,.25); border-top-color: var(--violet); border-radius: 50%; vertical-align: -2px; animation: spin .8s linear infinite; }
 .status-line.is-error { color: var(--red); }
 .status-line.is-success { color: var(--green); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.ideal-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(270px, .55fr); gap: 16px; align-items: stretch; }
+/* La lettura guidata sta a fine pagina: qui resta il solo circuito, a tutta larghezza. */
+.ideal-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .circuit-panel { min-width: 0; padding: 21px 0 13px; overflow: hidden; }
 .circuit-heading, .circuit-panel > .panel-intro { padding-right: 22px; padding-left: 22px; }
 .stage-chip, .result-badge {
@@ -229,6 +242,12 @@ select, input[type="number"] {
 }
 .result-badge.is-success { color: var(--green); border-color: rgba(75,213,163,.38); background: rgba(75,213,163,.10); }
 .result-badge.is-failure { color: var(--red); border-color: rgba(255,117,140,.35); background: rgba(255,117,140,.08); }
+/* Il badge e' una lettura, non un comando: la pillola colorata lo faceva
+   sembrare cliccabile. L'etichetta sopra dice cos'e', e il cursore resta
+   quello del testo invece di suggerire un'azione. */
+.result-readout { display: grid; gap: 5px; justify-items: end; margin: 0; }
+.result-readout small { color: var(--dim); font-size: .58rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+.result-readout .result-badge { cursor: default; user-select: text; }
 .circuit-scroller { width: 100%; margin-top: 8px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-color: var(--line-strong) transparent; }
 .circuit-svg { display: block; width: 100%; min-width: 880px; height: auto; }
 .legend { display: flex; flex-wrap: wrap; gap: 9px 15px; padding: 5px 22px 0; color: var(--muted); font-size: .68rem; }
@@ -237,7 +256,7 @@ select, input[type="number"] {
 .dot-violet { background: var(--violet); }.dot-amber { background: var(--amber); }.dot-pink { background: var(--pink); }.dot-cyan { background: var(--cyan); }
 .legend-symbol { color: var(--green); font: 800 .75rem/1 var(--mono); }
 
-.explanation-panel { padding: 24px; }
+.explanation-panel { margin-top: 16px; padding: 24px; }
 .explanation-panel > p:not(.kicker) { margin: 11px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.65; }
 .stage-facts { display: grid; gap: 8px; margin: 20px 0; }
 .stage-facts div { padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(10,11,19,.35); }
@@ -367,8 +386,6 @@ footer p { margin: 0; }
   .stage-picker select { width: 100%; }
 }
 @media (max-width: 900px) {
-  .ideal-layout { grid-template-columns: 1fr; }
-  .explanation-panel { order: -1; }
   .pipeline { grid-template-columns: 1fr 1fr; }
   .pipeline li:not(:last-child)::after { display: none; }
   .pipeline li:last-child { grid-column: 1 / -1; }
@@ -379,8 +396,7 @@ footer p { margin: 0; }
 @media (max-width: 650px) {
   .shell { width: min(100% - 20px, 1440px); padding-top: 16px; }
   .site-header { padding: 4px 3px 18px; }
-  .instance-control, .instance-control label { width: 100%; }
-  .instance-control label { align-items: stretch; flex-direction: column; }
+  .instance-control { width: 100%; }
   .instance-control select { width: 100%; min-width: 0; max-width: 100%; }
   .tabs { top: 5px; }
   .tab { gap: 8px; padding: 11px; }
@@ -412,4 +428,36 @@ footer p { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* Esito della misura anche a schermo: il badge nella pipeline resta, ma un
+   singolo shot e' il momento in cui l'algoritmo o' riesce o' va ripetuto, e
+   merita di essere visto senza cercarlo. Si chiude da solo: con 75% di esiti
+   utili su N=15, ripetere le misure ne aprirebbe uno di continuo. */
+.result-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 6, 12, .72);
+}
+.result-popup[hidden] { display: none; }
+.result-popup-card {
+  width: min(420px, 100%);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  padding: 26px;
+  background: var(--surface-solid);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+  text-align: center;
+}
+.result-popup-card h2 { margin: 8px 0 10px; font: 700 1.6rem/1.2 var(--mono); letter-spacing: -.01em; }
+.result-popup.is-success .result-popup-card h2 { color: var(--green); }
+.result-popup.is-failure .result-popup-card h2 { color: var(--red); }
+.result-popup-card > p:not(.kicker) { margin: 0 0 20px; color: var(--muted); font-size: .82rem; line-height: 1.6; }
+@media (prefers-reduced-motion: no-preference) {
+  .result-popup-card { animation: popup-in .18s ease-out; }
+  @keyframes popup-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 }

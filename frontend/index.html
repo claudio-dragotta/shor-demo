@@ -28,10 +28,6 @@
     </nav>
 
     <main id="mainContent">
-      <div class="instance-control">
-        <label for="instanceSelect"><span>Numero da fattorizzare</span><select id="instanceSelect"><option value="15" selected>15 = 3 × 5</option><option value="21">21 = 3 × 7</option><option value="35">35 = 5 × 7</option></select></label>
-      </div>
-
       <section class="tab-panel" id="idealPanel" role="tabpanel" aria-labelledby="idealTab">
         <section class="panel control-panel" aria-labelledby="idealControlsTitle">
           <div class="section-heading compact-heading">
@@ -40,21 +36,24 @@
               <h2 id="idealControlsTitle">Esplora il circuito, uno stadio alla volta</h2>
             </div>
             <div class="instance-badges" aria-label="Parametri validati dell'istanza">
-              <span><small>Numero</small><b id="instanceNBadge">N = 15</b></span>
               <span><small>Base</small><b id="instanceABadge">a = 7</b></span>
               <span><small>Conteggio</small><b id="instanceCountBadge">t = 8 qubit</b></span>
             </div>
           </div>
 
           <div class="transport" aria-label="Controlli del circuito">
-            <button class="button button-secondary" id="resetStageBtn" type="button">Torna all’inizio</button>
-            <button class="button button-primary" id="playStageBtn" type="button">Riproduci circuito</button>
-            <button class="button button-secondary" id="nextStageBtn" type="button">Stadio successivo</button>
-            <button class="button button-accent" id="newMeasureBtn" type="button">Nuova misura ideale</button>
-            <label class="stage-picker" for="stageSelect">
-              <span>Vai allo stadio</span>
-              <select id="stageSelect" aria-label="Seleziona lo stadio del circuito"><option>Caricamento…</option></select>
+            <label class="instance-control" for="instanceSelect">
+              <span>Numero da fattorizzare</span>
+              <select id="instanceSelect"><option value="15" selected>15</option><option value="21">21</option><option value="35">35</option></select>
             </label>
+            <button class="button button-primary" id="playStageBtn" type="button">Avvia automatico</button>
+            <button class="button button-secondary" id="stepModeBtn" type="button">Avvia a blocchi</button>
+            <div class="stage-nav" role="group" aria-label="Avanzamento fra gli stadi">
+              <button class="icon-button" id="prevStageBtn" type="button" aria-label="Stadio precedente" title="Stadio precedente">&#9664;</button>
+              <span class="stage-counter" id="stageNavCounter" aria-live="polite">— / —</span>
+              <button class="icon-button" id="nextStageBtn" type="button" aria-label="Stadio successivo" title="Stadio successivo">&#9654;</button>
+            </div>
+            <button class="button button-accent" id="newMeasureBtn" type="button">Nuova misura ideale</button>
           </div>
           <p class="status-line" id="idealStatus" role="status" aria-live="polite">Preparo il circuito ideale…</p>
         </section>
@@ -65,7 +64,6 @@
               <div><p class="kicker">Circuito + stato ridotto</p><h2 id="circuitTitle">Dove siamo e come stanno i qubit</h2></div>
               <span class="stage-chip" id="stageChip">Stadio —</span>
             </div>
-            <p class="panel-intro" id="circuitIntro">La linea tratteggiata indica lo stadio corrente. A destra, ogni sfera rappresenta lo stato ridotto di un qubit di conteggio; una freccia corta segnala entanglement.</p>
             <div class="circuit-scroller" tabindex="0" aria-label="Circuito quantistico; scorri orizzontalmente sui display piccoli">
               <svg id="circuitSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img" aria-labelledby="circuitSvgTitle circuitSvgDesc">
                 <title id="circuitSvgTitle">Circuito ideale di Shor per quindici</title>
@@ -81,25 +79,14 @@
             </div>
           </section>
 
-          <aside class="panel explanation-panel" aria-labelledby="stageExplanationTitle">
-            <p class="kicker">Lettura guidata</p>
-            <h2 id="stageExplanationTitle">Stato iniziale</h2>
-            <p id="stageExplanation">I registri partono nello stato computazionale iniziale.</p>
-            <dl class="stage-facts">
-              <div><dt>Operazione</dt><dd id="stageOperation">—</dd></div>
-              <div><dt>Cosa osservare</dt><dd id="stageObserve">—</dd></div>
-              <div><dt>Indice</dt><dd id="stageCounter">—</dd></div>
-            </dl>
-            <div class="bloch-note"><strong id="stateViewNoteTitle">Nota sulle sfere</strong><p id="stateViewNote">Mostrano i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro.</p></div>
-          </aside>
         </div>
 
         <section class="panel math-panel" aria-labelledby="mathTitle">
           <div class="section-heading">
             <div><p class="kicker">Post-processing classico</p><h2 id="mathTitle">Dalla misura ai fattori</h2></div>
-            <span class="result-badge" id="pipelineResult">In attesa della misura</span>
+            <p class="result-readout"><small>Esito dello shot</small><span class="result-badge" id="pipelineResult">In attesa della misura</span></p>
           </div>
-          <p class="panel-intro">La misura quantistica non restituisce direttamente 3 e 5: produce un intero <span class="mono">y</span>. Frazione continua, controllo del periodo e MCD completano il calcolo.</p>
+          <p class="panel-intro">La misura quantistica non restituisce direttamente i fattori: produce un intero <span class="mono">y</span>. Frazione continua, controllo del periodo e MCD completano il calcolo.</p>
           <ol class="pipeline" id="mathPipeline" aria-live="polite">
             <li><span>1</span><small>Misura</small><strong>y = —</strong><p>Esito sugli 8 bit classici.</p></li>
             <li><span>2</span><small>Fase</small><strong>y / 2⁸ = —</strong><p>Stima della fase periodica.</p></li>
@@ -114,6 +101,18 @@
           <article><small>Singolo shot</small><strong id="singleShotProbability">≈ 75%</strong><p id="singleShotExplanation">Tre picchi su quattro permettono di estrarre un fattore; <span class="mono">y=0</span> è sterile.</p></article>
           <article><small>Entro 2 shot</small><strong id="twoShotProbability">≈ 93,75%</strong><p id="twoShotExplanation"><span class="mono">1 − (1 − 0,75)²</span>: ripetere aumenta rapidamente la probabilità cumulativa.</p></article>
         </section>
+
+        <aside class="panel explanation-panel" aria-labelledby="stageExplanationTitle">
+          <p class="kicker">Lettura guidata</p>
+          <h2 id="stageExplanationTitle">Stato iniziale</h2>
+          <p id="stageExplanation">I registri partono nello stato computazionale iniziale.</p>
+          <dl class="stage-facts">
+            <div><dt>Operazione</dt><dd id="stageOperation">—</dd></div>
+            <div><dt>Cosa osservare</dt><dd id="stageObserve">—</dd></div>
+          </dl>
+          <div class="bloch-note"><strong id="stateViewNoteTitle">Nota sulle sfere</strong><p id="stateViewNote">Mostrano i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro.</p></div>
+        </aside>
+
       </section>
 
       <section class="tab-panel" id="noisePanel" role="tabpanel" aria-labelledby="noiseTab" hidden>
@@ -212,6 +211,16 @@
         </section>
       </section>
     </main>
+
+    <div class="result-popup" id="resultPopup" role="dialog" aria-modal="true" aria-labelledby="resultPopupTitle" hidden>
+      <div class="result-popup-card">
+        <p class="kicker" id="resultPopupKicker">Esito della misura</p>
+        <h2 id="resultPopupTitle">—</h2>
+        <p id="resultPopupDetail">—</p>
+        <button class="button button-secondary" id="resultPopupClose" type="button">Chiudi</button>
+      </div>
+    </div>
+
 
     <footer><p>Demo didattica · istanze compilate e validate <span class="mono">N=15, 21, 35</span>. I preset descrivono un modello NISQ illustrativo, non una specifica QPU reale.</p></footer>
   </div>

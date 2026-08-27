@@ -181,12 +181,12 @@
       title: "Misura e post-processing",
       text: "Gli otto qubit collassano in un bitstring. L’intero y alimenta la frazione continua e i MCD classici.",
       operation: "Misura c₀…c₇",
-      observe: "Il simbolo ✓ indica un esito che estrae 3 e 5; × indica uno shot non risolutivo.",
+      observe: "Il simbolo ✓ indica un esito da cui il post-processing ricava i due fattori; × indica uno shot non risolutivo.",
     },
   };
 
   function setIdealBusy(busy) {
-    ["resetStageBtn", "nextStageBtn", "newMeasureBtn", "stageSelect"].forEach((id) => { $(id).disabled = busy; });
+    ["prevStageBtn", "nextStageBtn", "newMeasureBtn", "stepModeBtn"].forEach((id) => { $(id).disabled = busy; });
     if (!busy) updateIdealButtons();
   }
 
@@ -194,10 +194,11 @@
     const ready = Boolean(state.ideal.info);
     const last = ready ? state.ideal.info.stages.length - 1 : 0;
     $("playStageBtn").disabled = !ready;
-    $("resetStageBtn").disabled = !ready || state.ideal.stage === 0;
+    $("stepModeBtn").disabled = !ready;
+    $("prevStageBtn").disabled = !ready || state.ideal.stage === 0;
     $("nextStageBtn").disabled = !ready || state.ideal.stage >= last;
     $("newMeasureBtn").disabled = !ready;
-    $("stageSelect").disabled = !ready;
+    $("stageNavCounter").textContent = ready ? `${state.ideal.stage + 1} / ${last + 1}` : "— / —";
   }
 
   function updateInstancePresentation() {
@@ -207,19 +208,15 @@
     const idealYield = Number.isFinite(instance.idealYield) ? instance.idealYield : null;
     const twoShot = idealYield == null ? null : 1 - (1 - idealYield) ** 2;
     const blochOk = state.ideal.info?.bloch_ok !== false;
-    $("instanceNBadge").textContent = `N = ${instance.N}`;
     $("instanceABadge").textContent = `a = ${instance.a}`;
     $("instanceCountBadge").textContent = `t = ${instance.nCount} qubit`;
     $("theoreticalPeaks").textContent = peaks.length ? peaks.join(" · ") : "—";
     const spacing = M / instance.order;
     $("peakExplanation").innerHTML = `Posizioni vicine ai multipli di <span class="mono">2^${instance.nCount} / r = ${numberIT(spacing, Number.isInteger(spacing) ? 0 : 2)}</span>, con <span class="mono">r=${instance.order}</span>.`;
     $("singleShotProbability").textContent = idealYield == null ? "—" : `≈ ${percentMetric(idealYield, 2)}`;
-    $("singleShotExplanation").textContent = `Il post-processing verifica ogni esito misurato per ottenere ${instance.factors.join(" e ")}.`;
+    $("singleShotExplanation").textContent = `Il post-processing verifica ogni esito misurato e, quando è utile, ne ricava i due divisori di ${instance.N}.`;
     $("twoShotProbability").textContent = twoShot == null ? "—" : `≈ ${percentMetric(twoShot, 2)}`;
     $("twoShotExplanation").textContent = "Due tentativi indipendenti aumentano la probabilità cumulativa di osservare almeno un esito utile.";
-    $("circuitIntro").textContent = blochOk
-      ? "La linea tratteggiata indica lo stadio corrente. A destra, ogni sfera rappresenta lo stato ridotto di un qubit di conteggio; una freccia corta segnala entanglement."
-      : `La linea tratteggiata indica lo stadio corrente del circuito a ${state.ideal.info?.num_qubits || "—"} qubit. La vista Bloch completa non viene materializzata: richiederebbe uno statevector esponenziale.`;
     $("stateViewNoteTitle").textContent = blochOk ? "Nota sulle sfere" : "Vista strutturale";
     $("stateViewNote").textContent = blochOk
       ? "Mostra i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro."
@@ -265,13 +262,6 @@
       if (info.done) throw new Error(`Il backend ha risolto N=${instance.N} nel pre-processing e non ha costruito il circuito.`);
       state.ideal.info = info;
       updateInstancePresentation();
-      const select = $("stageSelect");
-      select.replaceChildren(...state.ideal.info.stages.map((stage, index) => {
-        const option = document.createElement("option");
-        option.value = String(index);
-        option.textContent = `${index + 1}. ${stage.label}`;
-        return option;
-      }));
       await loadStage(0);
     } catch (error) {
       setStatus("idealStatus", `Circuito non disponibile: ${errorMessage(error)}`, "error");
@@ -313,7 +303,6 @@
       if (requestId !== state.ideal.requestId) return;
       state.ideal.stage = target;
       state.ideal.bloch = bloch;
-      $("stageSelect").value = String(target);
       renderCircuit(info, bloch);
       renderStageExplanation(info.stages[target], target, info.stages.length);
       if (bloch.kind === "measure" && bloch.measured_shot) renderPipeline(bloch.measured_shot);
@@ -341,13 +330,12 @@
     } else if (stage.kind === "measure") {
       copy.text = `I ${instance.nCount} qubit di conteggio producono un bitstring; y alimenta frazioni continue e MCD.`;
       copy.operation = `Misura c₀…c${instance.nCount - 1}`;
-      copy.observe = `✓ indica un esito che estrae ${instance.factors.join(" e ")}; × uno shot non risolutivo.`;
+      copy.observe = "✓ indica un esito da cui si ricavano i due fattori; × uno shot non risolutivo.";
     }
     $("stageExplanationTitle").textContent = copy.title;
     $("stageExplanation").textContent = copy.text;
     $("stageOperation").textContent = stage.label || copy.operation;
     $("stageObserve").textContent = copy.observe;
-    $("stageCounter").textContent = `${index + 1} / ${count}`;
     $("stageChip").textContent = `Stadio ${index + 1}/${count}`;
   }
 
@@ -355,7 +343,7 @@
     state.ideal.playing = false;
     if (state.ideal.timer) window.clearTimeout(state.ideal.timer);
     state.ideal.timer = null;
-    $("playStageBtn").textContent = "Riproduci circuito";
+    $("playStageBtn").textContent = "Avvia automatico";
   }
 
   async function playbackStep() {
@@ -515,8 +503,36 @@
     return { numerator: best.numerator / divisor, denominator: best.denominator / divisor };
   }
 
+  let resultPopupTimer = null;
+  let resultPopupOpener = null;
+
+  function hideResultPopup() {
+    const popup = $("resultPopup");
+    if (popup.hidden) return;
+    if (resultPopupTimer) { window.clearTimeout(resultPopupTimer); resultPopupTimer = null; }
+    popup.hidden = true;
+    // Restituisce il focus a chi ha aperto il popup: senza, la tastiera
+    // ripartirebbe dall'inizio del documento.
+    if (resultPopupOpener && document.contains(resultPopupOpener)) resultPopupOpener.focus();
+    resultPopupOpener = null;
+  }
+
+  function showResultPopup(success, title, detail) {
+    const popup = $("resultPopup");
+    popup.className = `result-popup ${success ? "is-success" : "is-failure"}`;
+    $("resultPopupKicker").textContent = success ? "Fattori trovati" : "Shot non risolutivo";
+    $("resultPopupTitle").textContent = title;
+    $("resultPopupDetail").textContent = detail;
+    if (popup.hidden) resultPopupOpener = document.activeElement;
+    popup.hidden = false;
+    $("resultPopupClose").focus();
+    if (resultPopupTimer) window.clearTimeout(resultPopupTimer);
+    resultPopupTimer = window.setTimeout(hideResultPopup, 5200);
+  }
+
   function resetPipeline() {
     const instance = currentInstance();
+    hideResultPopup();   // uscendo dallo stadio di misura il popup non resta appeso
     $("pipelineResult").className = "result-badge";
     $("pipelineResult").textContent = "In attesa della misura";
     $("mathPipeline").innerHTML = `
@@ -554,6 +570,13 @@
       <li><span>3</span><small>Frazione continua</small><strong>≈ ${fraction.numerator} / ${fraction.denominator}</strong><p>Denominatore limitato a N=${instance.N}.</p></li>
       <li class="${verified ? "is-success" : ""}"><span>4</span><small>Ordine candidato</small><strong>r = ${r}</strong><p>${orderText}; ${instance.a}ʳ mod ${instance.N} = ${modPow(instance.a, r, instance.N)}.</p></li>
       <li class="${success ? "is-success" : "is-failure"}"><span>5</span><small>MCD</small><strong>${gcdText}</strong><p>${success ? `Divisori non banali: ${factorA} e ${factorB}.` : "Ripetere lo shot è parte dell’algoritmo."}</p></li>`;
+    showResultPopup(
+      success,
+      success ? `${instance.N} = ${factorA} × ${factorB}` : `y = ${y}`,
+      success
+        ? `Dallo shot y = ${y} le frazioni continue danno r = ${r}, e i MCD estraggono i due divisori.`
+        : `Lo shot y = ${y} non porta a un ordine utilizzabile: ripetere la misura fa parte dell’algoritmo.`,
+    );
   }
 
   function channelElements(key) {
@@ -919,12 +942,24 @@
     });
   }
 
+  function setupResultPopup() {
+    $("resultPopupClose").addEventListener("click", hideResultPopup);
+    $("resultPopup").addEventListener("click", (event) => {
+      if (event.target === $("resultPopup")) hideResultPopup();   // solo lo sfondo, non la card
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hideResultPopup();
+    });
+  }
+
   function setupIdealControls() {
-    $("resetStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(0); });
     $("playStageBtn").addEventListener("click", togglePlayback);
+    // "A blocchi" non e' una modalita' con stato: ferma l'automatico e riporta all'inizio,
+    // da dove le frecce fanno avanzare uno stadio per volta.
+    $("stepModeBtn").addEventListener("click", () => { stopPlayback(); loadStage(0); });
+    $("prevStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(state.ideal.stage - 1); });
     $("nextStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(state.ideal.stage + 1); });
     $("newMeasureBtn").addEventListener("click", () => { stopPlayback(); if (state.ideal.info) loadStage(state.ideal.info.stages.length - 1); });
-    $("stageSelect").addEventListener("change", (event) => { stopPlayback(); loadStage(Number(event.target.value)); });
   }
 
   function setupInstanceControl() {
@@ -952,6 +987,7 @@
   function init() {
     setupTabs();
     setupIdealControls();
+    setupResultPopup();
     setupNoiseControls();
     setupInstanceControl();
     resetPipeline();
