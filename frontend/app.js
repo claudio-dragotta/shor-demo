@@ -186,7 +186,7 @@
   };
 
   function setIdealBusy(busy) {
-    ["prevStageBtn", "nextStageBtn", "newMeasureBtn", "stepModeBtn"].forEach((id) => { $(id).disabled = busy; });
+    ["prevStageBtn", "nextStageBtn", "stepModeBtn"].forEach((id) => { $(id).disabled = busy; });
     if (!busy) updateIdealButtons();
   }
 
@@ -197,7 +197,6 @@
     $("stepModeBtn").disabled = !ready;
     $("prevStageBtn").disabled = !ready || state.ideal.stage === 0;
     $("nextStageBtn").disabled = !ready || state.ideal.stage >= last;
-    $("newMeasureBtn").disabled = !ready;
     $("stageNavCounter").textContent = ready ? `${state.ideal.stage + 1} / ${last + 1}` : "— / —";
   }
 
@@ -217,10 +216,17 @@
     $("singleShotExplanation").textContent = `Il post-processing verifica ogni esito misurato e, quando è utile, ne ricava i due divisori di ${instance.N}.`;
     $("twoShotProbability").textContent = twoShot == null ? "—" : `≈ ${percentMetric(twoShot, 2)}`;
     $("twoShotExplanation").textContent = "Due tentativi indipendenti aumentano la probabilità cumulativa di osservare almeno un esito utile.";
-    $("stateViewNoteTitle").textContent = blochOk ? "Nota sulle sfere" : "Vista strutturale";
+    $("stateViewNoteTitle").textContent = blochOk ? "Nota sulle sfere" : "Perché qui non ci sono le sfere";
+    // Il limite non e' un difetto della demo: disegnare le sfere significa
+    // materializzare lo statevector, cioe' fare proprio il calcolo che il
+    // computer quantistico evita. Misurato su questa macchina: N=15 (12 qubit)
+    // rende l'intera vista in 22 ms; N=21 (22 qubit) supera i 120 s gia' alla
+    // prima moltiplicazione modulare controllata.
+    const nQubits = state.ideal.info?.num_qubits || 0;
+    const milioni = numberIT(2 ** nQubits / 1e6, 1);
     $("stateViewNote").textContent = blochOk
       ? "Mostra i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro."
-      : "Gli stadi, i controlli e la misura restano quelli del circuito validato. L’esito ideale è campionato dalla legge QPE esatta a registro finito.";
+      : `Servirebbe lo statevector completo dei ${nQubits} qubit: ${milioni} milioni di ampiezze, contro le 4.096 di N=15. Non è un limite della demo — è la stessa difficoltà che rende utile un computer quantistico, e si presenta esattamente alla prima moltiplicazione modulare controllata. Restano gli stadi, i controlli e la misura del circuito validato, con l’esito campionato dalla legge QPE esatta a registro finito.`;
     $("randomBaselineValue").textContent = percentMetric(instance.randomFloor);
     $("randomBaseline").title = `Successo del post-processing su una distribuzione uniforme dei ${M} esiti`;
     $("idealBaselineText").innerHTML = `<strong>Riferimento ideale teorico per N=${instance.N}:</strong> picchi presso <span class="mono">${peaks.join(", ")}</span>; probabilità teorica di fattorizzazione per shot ≈ <strong>${percentMetric(idealYield, 2)}</strong>. I dati dell’esperimento sono generati live con Qiskit Aer.`;
@@ -959,7 +965,6 @@
     $("stepModeBtn").addEventListener("click", () => { stopPlayback(); loadStage(0); });
     $("prevStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(state.ideal.stage - 1); });
     $("nextStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(state.ideal.stage + 1); });
-    $("newMeasureBtn").addEventListener("click", () => { stopPlayback(); if (state.ideal.info) loadStage(state.ideal.info.stages.length - 1); });
   }
 
   function setupInstanceControl() {
