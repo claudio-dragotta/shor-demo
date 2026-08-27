@@ -11,14 +11,50 @@ Avvio locale:
 Deploy (Render / Docker): CMD uvicorn server:app --host 0.0.0.0 --port $PORT
 """
 import os
-
+from threading import BoundedSemaphore
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import api_backend as api
+from experiment_backend import MAX_SHOTS, SimulationUnavailable
 
 app = FastAPI(title="Demo Shor — tesi", docs_url="/api/docs")
+
+
+class NoiseConfig(BaseModel):
+    """Canali indipendenti del modello NISQ uniforme e illustrativo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    eps_1q: float = Field(0.0, ge=0.0, le=1.0, allow_inf_nan=False, strict=True)
+    eps_2q: float = Field(0.0, ge=0.0, le=1.0, allow_inf_nan=False, strict=True)
+    t1_us: float | None = Field(None, gt=0.0, allow_inf_nan=False, strict=True)
+    t2_us: float | None = Field(None, gt=0.0, allow_inf_nan=False, strict=True)
+    readout_0to1: float = Field(0.0, ge=0.0, le=1.0, allow_inf_nan=False, strict=True)
+    readout_1to0: float = Field(0.0, ge=0.0, le=1.0, allow_inf_nan=False, strict=True)
+    coherent_overrotation_deg: float = Field(
+        0.0, ge=-180.0, le=180.0, allow_inf_nan=False, strict=True
+    )
+
+    @model_validator(mode="after")
+    def validate_relaxation_times(self):
+        if (self.t1_us is None) != (self.t2_us is None):
+            raise ValueError("t1_us e t2_us devono essere specificati insieme")
+        if self.t1_us is not None and self.t2_us > 2.0 * self.t1_us:
+            raise ValueError("il modello fisico richiede T2 <= 2*T1")
+        return self
+
+
+class ExperimentRequest(BaseModel):
+    """La configurazione algoritmica non e' un input: resta fissata a N=15/a=7/8 qubit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shots: int = Field(512, ge=10, le=MAX_SHOTS, strict=True)
+    seed: int | None = Field(None, ge=0, le=2 ** 31 - 1, strict=True)
+    noise: NoiseConfig = Field(default_factory=NoiseConfig)
 
 
 @app.middleware("http")
@@ -32,6 +68,22 @@ async def no_cache(request, call_next):
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _FRONTEND = os.path.join(_HERE, "frontend")
+# Un singolo worker Aer puo' gia' usare una quota significativa di CPU e memoria sul piano
+# Render della demo. Rifiutare subito una seconda simulazione evita code incontrollate e OOM.
+_SIMULATION_SLOT = BoundedSemaphore(value=1)
+
+
+def _with_simulation_slot(callback):
+    if not _SIMULATION_SLOT.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429,
+            detail="Un esperimento e' gia' in esecuzione. Riprova tra qualche secondo.",
+            headers={"Retry-After": "5"},
+        )
+    try:
+        return callback()
+    finally:
+        _SIMULATION_SLOT.release()
 
 
 @app.get("/api/factor")
@@ -44,20 +96,35 @@ def api_factor(N: int = Query(..., ge=2, le=100_000)):
 
 @app.get("/api/bloch")
 def api_bloch(N: int = Query(..., ge=2), a: int = Query(...), n_count: int = Query(..., ge=1),
-              stage: int = Query(0, ge=0)):
+              stage: int = Query(0, ge=0),
+              seed: int | None = Query(None, ge=0, le=2 ** 31 - 1)):
     try:
-        return api.bloch_at(N, a, n_count, stage)
+        return api.bloch_at(N, a, n_count, stage, seed=seed)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Vista di Bloch temporaneamente non disponibile.")
 
 
-@app.get("/api/run")
-def api_run(N: int = Query(..., ge=2), a: int = Query(...), n_count: int = Query(..., ge=1),
-            noise: str = Query("none"), shots: int = Query(100, ge=1, le=8192)):
+@app.post("/api/experiment")
+def api_experiment(request: ExperimentRequest):
+    """Confronta la baseline ideale con lo stesso circuito sotto i canali scelti."""
     try:
-        return api.run_stats(N, a, n_count, noise, shots)
-    except Exception as e:  # subprocess/timeout inclusi: messaggio pulito al frontend
+        return _with_simulation_slot(
+            lambda: api.run_experiment(
+                shots=request.shots,
+                seed=request.seed,
+                noise=request.noise.model_dump(),
+            )
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except SimulationUnavailable:
+        raise HTTPException(status_code=503, detail="Simulazione temporaneamente non disponibile.")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Errore interno durante la simulazione.")
 
 
 @app.get("/health")

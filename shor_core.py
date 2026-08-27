@@ -1,6 +1,7 @@
-"""
-shor_core.py — Funzioni core per la tesi di Claudio Dragotta.
-QPE per l'algoritmo di Shor: N=15 (c_amod15 textbook), N=21, N=35 (generale).
+"""Circuiti QPE locali usati dalla demo e dalle regressioni scientifiche.
+
+N=15 usa il moltiplicatore textbook; N=21/35 usano l'aritmetica Beauregard validata. La demo
+web espone soltanto N=15 per mantenere interattivo il costo della simulazione classica.
 """
 import numpy as np
 from math import gcd, ceil, log2
@@ -36,12 +37,12 @@ def c_amod15(a, power):
             U.swap(0, 1); U.swap(1, 2); U.swap(2, 3)
         if a in [7, 8]:
             U.swap(2, 3); U.swap(1, 2); U.swap(0, 1)
-        if a in [11, 13]:
-            U.x([0, 1, 2, 3])
-        if a in [7, 11]:
-            U.x([0, 2])
+        if a == 11:
+            U.swap(1, 3); U.swap(0, 2)
+        if a in [7, 11, 13]:
+            U.x(range(4))
     U.name = f'{a}^{power} mod 15'
-    return U.control()
+    return U.control(annotated=False)
 
 
 # --- Controlled modular exponentiation (generale, per N qualsiasi) ---
@@ -62,7 +63,7 @@ def c_amod(a, N, power):
             y = (a_pow * x) % N
             mat[y, x] = 1.0
     gate = UnitaryGate(mat, label=f'{a}^{power} mod {N}')
-    return gate.control(1)
+    return gate.control(1, annotated=False)
 
 
 # --- Shor circuit (QPE per N=15, N=21, N=35) ---
@@ -70,7 +71,7 @@ def shor_circuit(N, a, n_count):
     """
     Costruisce il circuito QPE per l'algoritmo di Shor.
     N=15: usa c_amod15 (loop-based, efficiente).
-    N=21, N=35: usa c_amod (matrice di permutazione generale).
+    N=21, N=35: usa beauregard_c_amod, validato aritmeticamente ma costoso da simulare.
     """
     if N == 15:
         n_work = 4
@@ -85,8 +86,12 @@ def shor_circuit(N, a, n_count):
     else:
         if N not in [21, 35]:
             raise NotImplementedError(f"N={N} non supportato. Usa N in {{15, 21, 35}}.")
-        # Beauregard decomposition: O(n^3) porte CX invece di O(4^n) di UnitaryGate.
-        # Per N=21 (n=5): ~2594 CX totali vs 10040, P_surv(eps=0.001)~7.5%.
+        # Riferimento riproducibile di costo (Qiskit 2.5.0, optimization_level=2,
+        # seed_transpiler=20260819, base RZ/SX/X/CX): N=21, a=2, n_count=8 produce
+        # 21.036 CX e profondita' 23.081. Il proxy indipendente di nessun evento
+        # 2Q e' soltanto (1-lambda_2q)^21036 = 7,237862389e-10 per
+        # lambda_2q=0,001: non e' una
+        # probabilita' di successo, una fedelta' o una misura della QPE.
         # Layout qubit Beauregard: [count | x(n) | b(n+1) | anc]
         n = ceil(log2(N + 1))
         n_b = n + 1

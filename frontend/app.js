@@ -1,372 +1,810 @@
 "use strict";
-const NS = "http://www.w3.org/2000/svg";
-const $ = (id) => document.getElementById(id);
-const svgEl = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
 
-const state = {
-  N: 15, a: null, n_count: 0, num_qubits: 0, stages: [], stage: 0, n_stages: 0,
-  blochOk: true, mode: "explore", statNoise: "uc1", shots: 100, playing: null,
-};
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const MAX_SEED = 2147483647;
+  const MAX_SHOTS = 2048;
+  const IDEAL = Object.freeze({ N: 15, a: 7, nCount: 8 });
+  const PEAKS = Object.freeze([0, 64, 128, 192]);
+  const $ = (id) => document.getElementById(id);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
-async function api(path) {
-  const r = await fetch(path);
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.detail || ("errore " + r.status));
-  return data;
-}
+  const state = {
+    ideal: { info: null, stage: 0, bloch: null, controller: null, requestId: 0, playing: false, timer: null },
+    experiment: { controller: null, requestId: 0, running: false, preset: "uc1", hasResult: false },
+  };
 
-// N troppo grande da simulare dal vivo: disabilita i comandi di esecuzione (resta il circuito).
-function setBigN(on) {
-  ["resetBtn", "nextBtn", "runBtn"].forEach((id) => { $(id).disabled = on; });
-}
+  const PRESETS = {
+    none: {
+      eps_1q: 0, eps_2q: 0, t1_us: 100, t2_us: 80,
+      readout_0to1: 0, readout_1to0: 0, coherent_overrotation_deg: 0,
+    },
+    uc1: {
+      eps_1q: 0.001, eps_2q: 0.01, t1_us: 100, t2_us: 80,
+      readout_0to1: 0.02, readout_1to0: 0.02, coherent_overrotation_deg: 0,
+    },
+    uc2: {
+      eps_1q: 0.005, eps_2q: 0.05, t1_us: 50, t2_us: 30,
+      readout_0to1: 0.05, readout_1to0: 0.05, coherent_overrotation_deg: 0,
+    },
+  };
 
-// Mostra/nasconde il banner centrale (N risolto classicamente) al posto del circuito.
-function showClassical(on) {
-  $("classicalBanner").style.display = on ? "block" : "none";
-  $("stageSvg").style.display = on ? "none" : "block";
-  $("stageBar").style.display = on ? "none" : "";
-  $("legend").style.display = on ? "none" : "flex";
-  if (on) closeMeasureModal();
-}
+  const PRESET_LABELS = Object.freeze({ none: "Rumore off", uc1: "UC1 moderato", uc2: "UC2 stress", custom: "Personalizzato" });
 
-// --------------------------------------------------------------------------
-// Fattorizzazione (Avvia)
-// --------------------------------------------------------------------------
-async function loadFactor(N) {
-  stopPlay();
-  $("factorMsg").innerHTML = `<div class="msg"><span class="spinner"></span>Preparo il circuito per N=${N}…</div>`;
-  let info;
-  try { info = await api(`/api/factor?N=${N}`); }
-  catch (e) { $("factorMsg").innerHTML = `<div class="msg bad">${e.message}</div>`; return false; }
+  const CHANNELS = {
+    eps_1q: { input: "eps1qInput", output: "eps1qOutput", format: percentControl },
+    eps_2q: { input: "eps2qInput", output: "eps2qOutput", format: percentControl },
+    t1_us: { input: "t1Input", output: "t1Output", format: (v) => `${numberIT(v, 0)} µs` },
+    t2_us: { input: "t2Input", output: "t2Output", format: (v) => `${numberIT(v, 0)} µs` },
+    readout_0to1: { input: "readout01Input", output: "readout01Output", format: percentControl },
+    readout_1to0: { input: "readout10Input", output: "readout10Output", format: percentControl },
+    coherent_overrotation_deg: { input: "overrotationInput", output: "overrotationOutput", format: (v) => `${numberIT(v, 1)}°` },
+  };
 
-  if (info.done) {
-    const isPrime = !info.p;
-    $("classicalBanner").className = "classban " + (isPrime ? "prime" : "ok");
-    $("classicalBanner").innerHTML = isPrime
-      ? `<div class="ic">◆</div><h3>${N} è un numero primo</h3><p>Non è fattorizzabile: non serve — né è possibile — l'algoritmo di Shor.</p>`
-      : `<div class="ic">✓</div><h3>Risolto classicamente</h3><div class="big">${N} = ${info.p} × ${info.q}</div><p>${info.reason}. Per questo N non serve il computer quantistico.</p>`;
-    showClassical(true);
-    $("factorMsg").innerHTML = "";
-    $("params").innerHTML = `<span class="param">N <b>${N}</b></span>`;
-    $("psval").textContent = "—"; state.n_stages = 0;
-    return false;
+  function numberIT(value, digits = 2) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    return n.toLocaleString("it-IT", { minimumFractionDigits: digits, maximumFractionDigits: digits });
   }
-  showClassical(false);
-  Object.assign(state, {
-    N, a: info.a, n_count: info.n_count, num_qubits: info.num_qubits,
-    stages: info.stages, n_stages: info.n_stages, stage: 0, blochOk: info.bloch_ok,
-  });
-  setBigN(!info.bloch_ok);
-  $("params").innerHTML = [["N", N], ["base a", info.a], ["qubit", info.num_qubits], ["stadi", info.n_stages]]
-    .map(([k, v]) => `<span class="param">${k} <b>${v}</b></span>`).join("");
-  $("psval").textContent = "—";
 
-  if (info.bloch_ok) {
-    $("factorMsg").innerHTML = info.validated ? ""
-      : `<div class="msg">Base scelta automaticamente (a=${info.a}) — circuito reale, non tra i tre validati in tesi.</div>`;
-    $("resultBody").innerHTML = `<div class="msg">Premi <b>Esegui</b> per calcolare la distribuzione delle misure.</div>`;
-    await loadStage(0);
-  } else {
-    // N grande: solo circuito statico (dimostrativo), niente autoplay né misura finta.
-    $("factorMsg").innerHTML = `<div class="msg warn">N=${N} · <b>${info.num_qubits} qubit</b>: troppo grande da simulare qui — né lo stato-per-stato né la statistica sono praticabili in tempo reale (servirebbero <b>minuti</b> per singola iterazione). È <b>esattamente</b> il motivo per cui l'algoritmo di Shor è difficile da simulare su un computer classico. <b>Prova N=15</b> per l'esperienza completa.</div>`;
-    $("stageLabel").textContent = `circuito completo · ${info.num_qubits} qubit (vista dimostrativa, non eseguibile qui)`;
-    closeMeasureModal();
-    renderCircuit(0, null);
+  function percentControl(value) {
+    const percentage = Number(value) * 100;
+    const digits = percentage < 1 ? 3 : 2;
+    return `${numberIT(percentage, digits)}%`;
   }
-  return true;
-}
 
-// --------------------------------------------------------------------------
-// Stadio
-// --------------------------------------------------------------------------
-async function loadStage(k) {
-  if (state.n_stages === 0) return;
-  state.stage = Math.max(0, Math.min(k, state.n_stages - 1));
-  let b = null;
-  if (state.blochOk) {
-    try { b = await api(`/api/bloch?N=${state.N}&a=${state.a}&n_count=${state.n_count}&stage=${state.stage}`); }
-    catch (e) { $("stageLabel").textContent = e.message; b = null; }
+  function ratio(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Math.abs(n) > 1 ? n / 100 : n;
   }
-  renderCircuit(state.stage, b);
-  const label = b ? b.label : (state.stages[state.stage] || {}).label || "";
-  $("stageLabel").textContent = `stadio ${state.stage} / ${state.n_stages - 1} — ${label}`;
-  $("stageNum").textContent = `stadio ${state.stage} / ${state.n_stages - 1}`;
-  $("nextBtn").disabled = state.stage >= state.n_stages - 1;
-  renderMeasureModal(b);
-}
 
-// Messaggio dell'esito della SINGOLA misura (passo-passo): se non porta ai fattori, spiega
-// che è normale (Shor è probabilistico) e invita a ripetere / vedere molte iterazioni.
-function closeMeasureModal() { $("measureModal").style.display = "none"; }
+  function percentMetric(value, digits = 1) {
+    const r = ratio(value);
+    return r == null ? "—" : `${numberIT(r * 100, digits)}%`;
+  }
 
-function renderMeasureModal(b) {
-  if (!b || b.kind !== "measure" || !b.measured_shot) { closeMeasureModal(); return; }
-  const s = b.measured_shot, card = $("measureCard");
-  card.className = "modal-card " + (s.ok ? "ok" : "no");
-  card.innerHTML = s.ok
-    ? `<button class="modal-close" id="modalClose" aria-label="Chiudi">×</button>
-       <div class="ic">✓</div><h3>Misura riuscita</h3>
-       <div class="big">${state.N} = ${s.p} × ${s.q}</div>
-       <p>Esito misurato <b>${s.value}</b>. Shor trova ${s.p}, l'altro per divisione classica.</p>
-       <div class="modal-run"><button class="btn" id="modalOk">Ottimo</button></div>`
-    : `<button class="modal-close" id="modalClose" aria-label="Chiudi">×</button>
-       <div class="ic">✗</div><h3>Questa misura non porta ai fattori</h3>
-       <p>Esito misurato <b>${s.value}</b>. Capita: Shor è <strong>probabilistico</strong> (succede anche senza rumore, per la degenerazione del periodo). Serve <strong>ripetere</strong> — quante iterazioni vuoi eseguire?</p>
-       <div class="modal-run">
-         <span class="pill" data-q="10">10</span><span class="pill" data-q="100">100</span><span class="pill" data-q="1000">1000</span>
-         <span class="clab" style="color:var(--muted);font-weight:400">oppure</span>
-         <input class="num sm inline" id="iterInline" type="number" min="1" max="8192" value="${state.shots}" aria-label="Numero di iterazioni">
-         <button class="btn ok" id="runInlineBtn">▶ Esegui le iterazioni</button>
-       </div>`;
-  $("measureModal").style.display = "flex";
-  $("modalClose").addEventListener("click", closeMeasureModal);
-  if ($("modalOk")) $("modalOk").addEventListener("click", closeMeasureModal);
-  if ($("runInlineBtn")) {
-    card.querySelectorAll(".modal-run .pill").forEach((p) => p.addEventListener("click", () => {
-      $("iterInline").value = p.dataset.q;
-      card.querySelectorAll(".modal-run .pill").forEach((q) => q.classList.toggle("on", q === p));
-    }));
-    $("runInlineBtn").addEventListener("click", () => {
-      const n = Math.max(1, Math.min(8192, parseInt($("iterInline").value, 10) || 100));
-      state.shots = n;
-      document.querySelectorAll("#shotPills .pill").forEach((q) => q.classList.toggle("on", parseInt(q.dataset.shots, 10) === n));
-      closeMeasureModal();
-      runStats();
-      $("resultPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+  function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+
+  function setStatus(id, message, kind = "") {
+    const el = $(id);
+    el.textContent = message;
+    el.className = `status-line${kind ? ` is-${kind}` : ""}`;
+  }
+
+  function errorMessage(error) {
+    if (!error) return "Errore sconosciuto.";
+    if (typeof error === "string") return error;
+    if (Array.isArray(error.detail)) return error.detail.map((item) => item.msg || String(item)).join("; ");
+    return error.detail || error.message || "La richiesta non è riuscita.";
+  }
+
+  async function apiJSON(path, options = {}) {
+    const response = await fetch(path, options);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(errorMessage(data) || `Errore HTTP ${response.status}`);
+    return data;
+  }
+
+  function svgNode(tag, attributes = {}, text = null) {
+    const element = document.createElementNS(NS, tag);
+    Object.entries(attributes).forEach(([name, value]) => element.setAttribute(name, String(value)));
+    if (text != null) element.textContent = String(text);
+    return element;
+  }
+
+  function clearSvg(svg, title, description) {
+    const labelIds = (svg.getAttribute("aria-labelledby") || "").trim().split(/\s+/).filter(Boolean);
+    svg.replaceChildren();
+    svg.append(
+      svgNode("title", labelIds[0] ? { id: labelIds[0] } : {}, title),
+      svgNode("desc", labelIds[1] ? { id: labelIds[1] } : {}, description),
+    );
+  }
+
+  function activateTab(name, focus = false) {
+    $$("[role='tab']").forEach((tab) => {
+      const active = tab.dataset.tab === name;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
+      $(tab.getAttribute("aria-controls")).hidden = !active;
+      if (active && focus) tab.focus();
+    });
+    if (name !== "ideal") stopPlayback();
+  }
+
+  function setupTabs() {
+    const tabs = $$("[role='tab']");
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => activateTab(tab.dataset.tab));
+      tab.addEventListener("keydown", (event) => {
+        let target = null;
+        if (event.key === "ArrowRight") target = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft") target = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === "Home") target = 0;
+        if (event.key === "End") target = tabs.length - 1;
+        if (target != null) { event.preventDefault(); activateTab(tabs[target].dataset.tab, true); }
+      });
     });
   }
-}
 
-// --------------------------------------------------------------------------
-// Disegno SVG
-// --------------------------------------------------------------------------
-function phaseColor(x, y) {
-  const h = ((Math.atan2(y, x) / (2 * Math.PI)) + 1) % 1;
-  return `hsl(${Math.round(h * 360)} 82% 66%)`;
-}
-const OPCOL = { H: "var(--violet)", "●": "var(--amber)", QFT: "var(--orchid)", "∿": "var(--cyan)", "⊕": "var(--muted)", "·": "var(--muted-2)", M: "var(--good)" };
-
-function renderCircuit(stageIdx, b) {
-  const svg = $("stageSvg");
-  svg.innerHTML = "";
-  const nc = state.n_count, nq = state.num_qubits;
-  const nWorkAll = nq - nc, nWork = Math.min(nWorkAll, 3), extraWork = nWorkAll - nWork;
-  const nWires = nc + nWork;
-  const rowH = 64, top = 44, botPad = 18;
-  const H = top + nWires * rowH + botPad;
-  svg.setAttribute("viewBox", `0 0 1020 ${H}`);
-  const cy = (i) => top + i * rowH + rowH / 2;
-  const X0 = 64, XcircEnd = 700, SPH = 912, R = 16, xL = 122, xR = 656;
-
-  const drawable = state.stages.map((s, idx) => ({ ...s, idx })).filter((s) => s.kind !== "init0");
-  const xOf = (j) => (drawable.length <= 1 ? xL : xL + j * (xR - xL) / (drawable.length - 1));
-  const curCol = drawable.findIndex((o) => o.idx === stageIdx);
-  const add = (t, a, txt) => { const e = svgEl(t, a); if (txt != null) e.textContent = txt; svg.appendChild(e); return e; };
-
-  add("text", { x: SPH, y: 22, fill: "var(--muted)", "font-size": 10, "text-anchor": "middle", "font-family": "var(--mono)", "letter-spacing": ".1em" }, "STATO");
-
-  for (let i = 0; i < nc; i++) {
-    const y = cy(i);
-    add("text", { class: "wlab", x: 22, y: y + 4 }, "c" + i);
-    add("line", { class: "wire", x1: X0, y1: y, x2: XcircEnd, y2: y });
-    add("line", { class: "connector", x1: XcircEnd, y1: y, x2: SPH - R, y2: y });
+  function setupDialog() {
+    const dialog = $("guideDialog");
+    const open = () => { if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", ""); };
+    const close = () => dialog.close ? dialog.close() : dialog.removeAttribute("open");
+    $("openGuideBtn").addEventListener("click", open);
+    $("closeGuideBtn").addEventListener("click", close);
+    $("dialogOkBtn").addEventListener("click", close);
+    dialog.addEventListener("click", (event) => { if (event.target === dialog) close(); });
   }
-  for (let w = 0; w < nWork; w++) {
-    const y = cy(nc + w);
-    add("text", { class: "wlab", x: 22, y: y + 4 }, (w === nWork - 1 && extraWork > 0) ? `+${extraWork + 1} lav.` : "w" + w);
-    add("line", { class: "wire work", x1: X0, y1: y, x2: XcircEnd, y2: y });
-  }
-  const workY = cy(nc);
 
-  drawable.forEach((col, j) => {
-    const x = xOf(j), active = col.idx === stageIdx;
-    if (col.kind === "init") {
-      for (let i = 0; i < nc; i++) { add("rect", { class: "gbox", x: x - 13, y: cy(i) - 13, width: 26, height: 26, rx: 6, stroke: "var(--violet)" }); add("text", { class: "gtx", x: x, y: cy(i) + 5 }, "H"); }
-      add("rect", { class: "gbox", x: x - 13, y: workY - 13, width: 26, height: 26, rx: 6 });
-      add("text", { class: "gtx", x: x, y: workY + 5, "font-size": 11, fill: "var(--muted)" }, "|1⟩");
-    } else if (col.kind === "u") {
-      const cyc = cy(col.control ?? 0), colr = active ? "var(--amber)" : "var(--muted-2)";
-      add("circle", { cx: x, cy: cyc, r: active ? 6 : 5, fill: colr });
-      add("line", { x1: x, y1: cyc, x2: x, y2: workY, stroke: colr, "stroke-width": active ? 2 : 1.5 });
-      add("rect", { class: "gbox", x: x - 20, y: workY - 15, width: 40, height: 44, rx: 7, stroke: colr, "stroke-width": active ? 2 : 1.4 });
-      add("text", { class: "gtx", x: x, y: workY + 11, "font-size": 12, fill: colr }, "U");
-    } else if (col.kind === "qft") {
-      const colr = active ? "var(--amber)" : "var(--line-2)";
-      add("rect", { class: "gbox", x: x - 30, y: cy(0) - 15, width: 60, height: cy(nc - 1) - cy(0) + 30, rx: 9, stroke: colr, "stroke-width": active ? 2 : 1.4 });
-      add("text", { class: "gtx", x: x, y: cy(Math.floor((nc - 1) / 2)) + 5, "font-size": 12 }, "QFT⁻¹");
-    } else if (col.kind === "measure") {
-      const colr = active ? "var(--amber)" : "var(--good)";
-      for (let i = 0; i < nc; i++) { add("rect", { class: "gbox", x: x - 13, y: cy(i) - 13, width: 26, height: 26, rx: 6, stroke: colr }); add("text", { class: "gtx", x: x, y: cy(i) + 5, fill: "var(--good)" }, "M"); }
+  const STAGE_COPY = {
+    init0: {
+      title: "Stato iniziale",
+      text: "I qubit di conteggio e il registro di lavoro partono in stati computazionali definiti.",
+      operation: "Preparazione |0…0⟩",
+      observe: "Le frecce puntano verso |0⟩ e hanno lunghezza unitaria.",
+    },
+    init: {
+      title: "Preparazione della sovrapposizione",
+      text: "Gli Hadamard creano una sovrapposizione uniforme sugli otto qubit di conteggio; il registro di lavoro viene posto in |1⟩.",
+      operation: "H⊗⁸ sul conteggio, X sul lavoro",
+      observe: "Le frecce dei qubit di conteggio ruotano verso l’equatore.",
+    },
+    u: {
+      title: "Esponenziazione modulare controllata",
+      text: "Il controllo applica una potenza di Uₐ al registro di lavoro. La periodicità di 7ˣ mod 15 viene codificata nelle fasi.",
+      operation: "U(a²ᵏ) controllata",
+      observe: "Conteggio e lavoro si entangliano: alcune frecce di Bloch si accorciano.",
+    },
+    qft: {
+      title: "Trasformata di Fourier inversa",
+      text: "La QFT⁻¹ converte l’informazione di fase in picchi misurabili separati da 64.",
+      operation: "QFT⁻¹ sul registro di conteggio",
+      observe: "Le ampiezze interferiscono e si concentrano presso 0, 64, 128 e 192.",
+    },
+    measure: {
+      title: "Misura e post-processing",
+      text: "Gli otto qubit collassano in un bitstring. L’intero y alimenta la frazione continua e i MCD classici.",
+      operation: "Misura c₀…c₇",
+      observe: "Il simbolo ✓ indica un esito che estrae 3 e 5; × indica uno shot non risolutivo.",
+    },
+  };
+
+  function setIdealBusy(busy) {
+    ["resetStageBtn", "nextStageBtn", "newMeasureBtn", "stageSelect"].forEach((id) => { $(id).disabled = busy; });
+    if (!busy) updateIdealButtons();
+  }
+
+  function updateIdealButtons() {
+    const ready = Boolean(state.ideal.info);
+    const last = ready ? state.ideal.info.stages.length - 1 : 0;
+    $("playStageBtn").disabled = !ready;
+    $("resetStageBtn").disabled = !ready || state.ideal.stage === 0;
+    $("nextStageBtn").disabled = !ready || state.ideal.stage >= last;
+    $("newMeasureBtn").disabled = !ready;
+    $("stageSelect").disabled = !ready;
+  }
+
+  async function initIdeal() {
+    setStatus("idealStatus", "Preparo il circuito ideale N=15, a=7…", "loading");
+    $("playStageBtn").disabled = true;
+    try {
+      const info = await apiJSON("/api/factor?N=15");
+      if (info.done) throw new Error("Il backend ha risolto N=15 nel pre-processing e non ha costruito il circuito.");
+      state.ideal.info = { ...info, a: IDEAL.a, n_count: Number(info.n_count) || IDEAL.nCount };
+      const select = $("stageSelect");
+      select.replaceChildren(...state.ideal.info.stages.map((stage, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${index + 1}. ${stage.label}`;
+        return option;
+      }));
+      await loadStage(0);
+    } catch (error) {
+      setStatus("idealStatus", `Circuito non disponibile: ${errorMessage(error)}`, "error");
+      renderCircuit(null, null);
     }
-  });
+  }
 
-  const px = curCol >= 0 ? xOf(curCol) : xL - 26;
-  add("line", { class: "playhead", id: "playhead", x1: px, y1: 26, x2: px, y2: H - 8 });
-  add("text", { id: "playheadLbl", x: px, y: 18, fill: "var(--amber)", "font-size": 10, "text-anchor": "middle", "font-family": "var(--mono)" }, "▶ ora");
-  state._sweep = { start: X0 + 4, end: xOf(drawable.length - 1) };  // per l'animazione multi-run
-
-  for (let i = 0; i < nc; i++) {
-    const y = cy(i), q = b ? b.qubits[i] : null;
-    const g = svgEl("g", { opacity: (q && q.name === "a riposo") ? 0.62 : 1 });
-    if (!q) {  // sfera placeholder (N grande, stato non simulato)
-      g.appendChild(svgEl("circle", { cx: SPH, cy: y, r: R, fill: "rgba(20,14,28,.6)", stroke: "var(--line)", "stroke-dasharray": "2 3" }));
-      const nd = svgEl("text", { class: "kettx", x: SPH, y: y + 4, fill: "var(--muted-2)" }); nd.textContent = "n/d"; g.appendChild(nd);
-      svg.appendChild(g); continue;
+  async function loadStage(index) {
+    const info = state.ideal.info;
+    if (!info) return;
+    const target = clamp(Number(index) || 0, 0, info.stages.length - 1);
+    const requestId = ++state.ideal.requestId;
+    state.ideal.controller?.abort();
+    const controller = new AbortController();
+    state.ideal.controller = controller;
+    setIdealBusy(true);
+    setStatus("idealStatus", `Calcolo dello stato ridotto · ${info.stages[target].label}…`, "loading");
+    try {
+      const query = new URLSearchParams({ N: String(IDEAL.N), a: String(IDEAL.a), n_count: String(info.n_count), stage: String(target) });
+      const bloch = await apiJSON(`/api/bloch?${query}`, { signal: controller.signal });
+      if (requestId !== state.ideal.requestId) return;
+      state.ideal.stage = target;
+      state.ideal.bloch = bloch;
+      $("stageSelect").value = String(target);
+      renderCircuit(info, bloch);
+      renderStageExplanation(info.stages[target], target, info.stages.length);
+      if (bloch.kind === "measure" && bloch.measured_shot) renderPipeline(bloch.measured_shot);
+      else resetPipeline();
+      setStatus("idealStatus", `Stadio ${target + 1} di ${info.stages.length}: ${bloch.label || info.stages[target].label}.`, "success");
+    } catch (error) {
+      if (error.name !== "AbortError" && requestId === state.ideal.requestId) setStatus("idealStatus", `Impossibile calcolare lo stadio: ${errorMessage(error)}`, "error");
+    } finally {
+      if (requestId === state.ideal.requestId) setIdealBusy(false);
     }
-    let col = q.collapsed ? (q.ok ? "var(--good)" : "var(--bad)") : (q.name === "a riposo" ? "var(--muted-2)" : phaseColor(q.x, q.y));
-    const bcol = q.collapsed ? (q.ok ? "var(--good)" : "var(--bad)") : (OPCOL[q.op] || "var(--muted)");
-    g.appendChild(svgEl("rect", { x: SPH - 32, y: y - R - 19, width: 64, height: 14, rx: 7, fill: "rgba(255,255,255,.05)", stroke: q.active ? "var(--amber)" : "none" }));
-    const tag = svgEl("text", { class: "optag", x: SPH, y: y - R - 9, fill: bcol }); tag.textContent = `${q.op} ${q.name}`; g.appendChild(tag);
-    g.appendChild(svgEl("circle", { cx: SPH, cy: y, r: R, fill: "rgba(20,14,28,.85)", stroke: q.active ? "var(--amber)" : "var(--line-2)", "stroke-width": q.active ? 2 : 1 }));
-    g.appendChild(svgEl("ellipse", { cx: SPH, cy: y, rx: R, ry: R * 0.32, fill: "none", stroke: "rgba(178,146,220,.28)" }));
-    const vx = SPH + q.x * R * 0.92, vy = y - q.z * R * 0.9 + q.y * R * 0.26;
-    g.appendChild(svgEl("line", { x1: SPH, y1: y, x2: vx.toFixed(1), y2: vy.toFixed(1), stroke: col, "stroke-width": 2.5 }));
-    g.appendChild(svgEl("circle", { cx: vx.toFixed(1), cy: vy.toFixed(1), r: 3.3, fill: col }));
-    const ket = svgEl("text", { class: "kettx", x: SPH, y: y + R + 15 }); ket.textContent = q.ket; g.appendChild(ket);
-    svg.appendChild(g);
   }
-}
 
-// --------------------------------------------------------------------------
-// Statistica
-// --------------------------------------------------------------------------
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Anima il playhead (tratteggio) da inizio a fine del circuito in `ms` millisecondi.
-function sweepPlayhead(ms) {
-  return new Promise((resolve) => {
-    const ph = $("playhead"), lbl = $("playheadLbl");
-    if (!ph || !state._sweep || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { resolve(); return; }
-    const { start, end } = state._sweep, t0 = performance.now();
-    (function frame(t) {
-      const p = Math.min(1, (t - t0) / ms), x = start + (end - start) * p;
-      ph.setAttribute("x1", x); ph.setAttribute("x2", x);
-      if (lbl) lbl.setAttribute("x", x);
-      if (p < 1) requestAnimationFrame(frame); else resolve();
-    })(t0);
-  });
-}
-
-// Esegue le iterazioni e le MOSTRA una per una: per ogni iterazione il playhead attraversa il
-// circuito (inizio → fine) e la relativa cella appare nella griglia dal vivo.
-async function runStats() {
-  stopPlay(); closeMeasureModal();
-  $("psval").textContent = "…";
-  $("resultBody").innerHTML = `<div class="msg"><span class="spinner"></span>Eseguo ${state.shots} iterazioni${state.statNoise !== "none" ? " con rumore " + state.statNoise.toUpperCase() : ""}…</div>
-    <div class="lab" style="margin:14px 0 8px">Le iterazioni, una per una — <span style="color:var(--good)">verde</span> = trova i fattori, <span style="color:var(--bad)">rosso</span> = no · il numero è l'esito misurato</div>
-    <div class="itergrid" id="liveGrid"></div>`;
-  let res;
-  try { res = await api(`/api/run?N=${state.N}&a=${state.a}&n_count=${state.n_count}&noise=${state.statNoise}&shots=${state.shots}`); }
-  catch (e) { $("resultBody").innerHTML = `<div class="msg bad">${e.message}</div>`; $("psval").textContent = "—"; return; }
-
-  if (state.blochOk) $("stageSvg").scrollIntoView({ behavior: "smooth", block: "center" });
-  const iters = res.iterations, shown = iters.length, grid = $("liveGrid");
-  const per = Math.max(80, 7000 / Math.max(1, shown));  // budget ~7s totali, min 80ms/iterazione
-  for (let k = 0; k < shown; k++) {
-    const ph = $("playhead");
-    if (ph && state._sweep) { ph.setAttribute("x1", state._sweep.start); ph.setAttribute("x2", state._sweep.start); }
-    await sweepPlayhead(per * 0.7);                       // il tratteggio attraversa il circuito
-    const it = iters[k];
-    const cell = document.createElement("div");
-    cell.className = `itercell ${it.ok ? "ok" : "no"} ${res.found_at === k + 1 ? "first" : ""}`;
-    cell.textContent = it.value;
-    cell.title = `tentativo ${k + 1}: esito ${it.value}${it.ok ? " ✓ trova i fattori" : ""}`;
-    grid.appendChild(cell);
-    await sleep(per * 0.3);
+  function renderStageExplanation(stage, index, count) {
+    const copy = STAGE_COPY[stage.kind] || STAGE_COPY.init0;
+    $("stageExplanationTitle").textContent = copy.title;
+    $("stageExplanation").textContent = copy.text;
+    $("stageOperation").textContent = stage.label || copy.operation;
+    $("stageObserve").textContent = copy.observe;
+    $("stageCounter").textContent = `${index + 1} / ${count}`;
+    $("stageChip").textContent = `Stadio ${index + 1}/${count}`;
   }
-  renderStatsSummary(res);
-  $("resultPanel").scrollIntoView({ behavior: "smooth", block: "start" });
-}
 
-// Riepilogo finale (dopo l'animazione): banner, "trovato al tentativo k", griglia completa,
-// distribuzione, probabilità.
-function renderStatsSummary(res) {
-  const pcol = res.p_success >= 60 ? "var(--good)" : res.p_success >= 30 ? "var(--amber)" : "var(--warn)";
-  $("psval").textContent = res.p_success + "%"; $("psval").style.color = pcol;
-  const f = res.top_factors;
-  const banner = f
-    ? `<div class="banner ok"><div><h3>Fattori trovati</h3><div class="sub">Ripetendo le iterazioni, l'esito risolutivo emerge: Shor trova ${f[0]}, l'altro è ${state.N}/${f[0]} = ${f[1]}.</div></div><div class="big">${state.N} = ${f[0]} × ${f[1]}</div></div>`
-    : `<div class="banner no"><div><h3>Nessun esito risolutivo</h3><div class="sub">In queste ${res.shots} iterazioni nessuna ha dato i fattori: aumenta le iterazioni o riduci il rumore.</div></div><div class="big">P ${res.p_success}%</div></div>`;
-  const foundHtml = res.found_at
-    ? `<div class="foundmsg ok">✓ Fattori trovati al <b>tentativo ${res.found_at}</b> su ${res.shots}. Una singola misura spesso fallisce, ma bastano poche ripetizioni.</div>`
-    : `<div class="foundmsg no">Nessuna delle ${res.shots} iterazioni ha dato i fattori con questo rumore.</div>`;
-  const cells = res.iterations.map((it, idx) =>
-    `<div class="itercell ${it.ok ? "ok" : "no"} ${res.found_at === idx + 1 ? "first" : ""}" title="tentativo ${idx + 1}: esito ${it.value}${it.ok ? " ✓ trova i fattori" : ""}">${it.value}</div>`).join("");
-  const shownNote = res.iterations_shown < res.shots ? ` (prime ${res.iterations_shown} di ${res.shots})` : "";
-  const maxc = Math.max(1, ...res.distribution.map((d) => d.count));
-  const bars = res.distribution.map((d) => `<div class="bar ${d.ok ? "hot" : ""}" style="height:${Math.round(100 * d.count / maxc)}%" title="esito ${d.value}: ${d.count}${d.ok ? " ✓" : ""}"></div>`).join("");
-  const barx = res.distribution.map((d) => `<span>${d.value}</span>`).join("");
-  $("resultBody").innerHTML = banner + foundHtml + `
-    <div class="lab" style="margin:16px 0 8px">Le iterazioni, una per una${shownNote} · <span style="color:var(--good)">verde</span> = trova i fattori, <span style="color:var(--bad)">rosso</span> = no · il numero è l'esito misurato</div>
-    <div class="itergrid">${cells}</div>
-    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-top:18px">
-      <div><div class="lab" style="margin-bottom:7px">Distribuzione degli esiti · ${res.shots} iterazioni</div>
-        <div class="bars">${bars}</div><div class="barx">${barx}</div></div>
-      <div><div class="lab" style="margin-bottom:7px">Riepilogo</div>
-        <div class="reliab">
-          <div class="rrow"><span>probabilità di successo</span><b style="color:${pcol}">${res.p_success}%</b></div>
-          <div class="rrow"><span>successi</span><b>${res.n_ok} / ${res.total}</b></div>
-          <div class="rrow"><span>rumore</span><b>${state.statNoise === "none" ? "assente" : state.statNoise.toUpperCase()}</b></div>
-        </div></div>
-    </div>`;
-}
-
-// --------------------------------------------------------------------------
-// Play / Avvia
-// --------------------------------------------------------------------------
-function stopPlay() { if (state.playing) { clearInterval(state.playing); state.playing = null; } $("startBtn").textContent = "▶ Avvia"; }
-function startPlay() {
-  if (state.n_stages <= 1) return;
-  if (state.stage >= state.n_stages - 1) state.stage = -1;
-  $("startBtn").textContent = "⏸ Pausa";
-  state.playing = setInterval(async () => {
-    if (state.stage >= state.n_stages - 1) { stopPlay(); return; }
-    await loadStage(state.stage + 1);
-  }, 1200);
-}
-async function onAvvia() {
-  if (state.playing) { stopPlay(); return; }        // in play -> pausa
-  const N = parseInt($("Ninput").value, 10) || 15;
-  if (N !== state.N || state.n_stages === 0) {
-    const ok = await loadFactor(N);
-    if (!ok) return;                                 // classico o errore: niente play
+  function stopPlayback() {
+    state.ideal.playing = false;
+    if (state.ideal.timer) window.clearTimeout(state.ideal.timer);
+    state.ideal.timer = null;
+    $("playStageBtn").textContent = "Riproduci circuito";
   }
-  if (!state.blochOk) return;                        // N grande: solo circuito statico, niente autoplay
-  startPlay();
-}
 
-// --------------------------------------------------------------------------
-// Modalità (Senza / Con rumore)
-// --------------------------------------------------------------------------
-function setMode(m) {
-  state.mode = m;
-  document.querySelectorAll("#modeToggle button").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
-  const on = m === "noise";
-  $("noiseGroup").style.display = on ? "inline-flex" : "none";  // i preset UC1/UC2 solo qui
-  state.statNoise = on ? "uc1" : "none";
-  document.querySelectorAll("#noisePills .pill").forEach((p) => p.classList.toggle("on", p.dataset.noise === state.statNoise));
-}
+  async function playbackStep() {
+    if (!state.ideal.playing || !state.ideal.info) return;
+    const last = state.ideal.info.stages.length - 1;
+    if (state.ideal.stage >= last) { stopPlayback(); return; }
+    await loadStage(state.ideal.stage + 1);
+    if (!state.ideal.playing) return;
+    if (state.ideal.stage >= last) { stopPlayback(); return; }
+    state.ideal.timer = window.setTimeout(playbackStep, 1050);
+  }
 
-// --------------------------------------------------------------------------
-// Eventi
-// --------------------------------------------------------------------------
-$("startBtn").addEventListener("click", onAvvia);
-$("Ninput").addEventListener("keydown", (e) => { if (e.key === "Enter") onAvvia(); });
-$("resetBtn").addEventListener("click", () => { stopPlay(); loadStage(0); });
-$("nextBtn").addEventListener("click", () => { stopPlay(); loadStage(state.stage + 1); });
-$("runBtn").addEventListener("click", runStats);
-document.querySelectorAll("#modeToggle button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
-document.querySelectorAll("#noisePills .pill").forEach((p) => p.addEventListener("click", () => {
-  state.statNoise = p.dataset.noise;
-  document.querySelectorAll("#noisePills .pill").forEach((q) => q.classList.toggle("on", q === p));
-}));
-document.querySelectorAll("#shotPills .pill").forEach((p) => p.addEventListener("click", () => {
-  state.shots = parseInt(p.dataset.shots, 10);
-  document.querySelectorAll("#shotPills .pill").forEach((q) => q.classList.toggle("on", q === p));
-}));
+  function togglePlayback() {
+    if (state.ideal.playing) { stopPlayback(); return; }
+    if (!state.ideal.info) return;
+    state.ideal.playing = true;
+    $("playStageBtn").textContent = "Pausa";
+    const last = state.ideal.info.stages.length - 1;
+    const begin = state.ideal.stage >= last ? loadStage(0) : Promise.resolve();
+    begin.then(() => { if (state.ideal.playing) state.ideal.timer = window.setTimeout(playbackStep, 350); });
+  }
 
-$("measureModal").addEventListener("click", (e) => { if (e.target.id === "measureModal") closeMeasureModal(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMeasureModal(); });
+  function phaseColor(x, y) {
+    const hue = ((((Math.atan2(y, x) / (2 * Math.PI)) + 1) % 1) * 360).toFixed(0);
+    return `hsl(${hue} 78% 68%)`;
+  }
 
-setMode("explore");
-loadFactor(15);
+  function renderCircuit(info, bloch) {
+    const svg = $("circuitSvg");
+    clearSvg(
+      svg,
+      "Circuito ideale di Shor per N uguale a 15",
+      bloch ? `Stadio ${bloch.stage + 1}: ${bloch.label}. A destra sono rappresentati gli stati ridotti degli otto qubit di conteggio.` : "Circuito non disponibile.",
+    );
+    if (!info) {
+      svg.append(svgNode("text", { x: 540, y: 290, fill: "var(--red)", "text-anchor": "middle", "font-size": 16 }, "Circuito non disponibile"));
+      return;
+    }
+
+    const stages = info.stages || [];
+    const nCount = Number(info.n_count) || IDEAL.nCount;
+    const width = 1080;
+    const top = 66;
+    const row = 57;
+    const workY = top + nCount * row + 30;
+    const height = workY + 54;
+    const wireStart = 62;
+    const wireEnd = 790;
+    const sphereX = 984;
+    const radius = 18;
+    const stageStart = 105;
+    const stageEnd = 735;
+    const stageX = (index) => stages.length < 2 ? stageStart : stageStart + index * (stageEnd - stageStart) / (stages.length - 1);
+    const yOf = (index) => top + index * row;
+    const current = bloch ? Number(bloch.stage) : state.ideal.stage;
+
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.append(svgNode("text", { x: 25, y: 28, class: "c-register" }, "REGISTRO DI CONTEGGIO"));
+    svg.append(svgNode("text", { x: sphereX, y: 28, class: "c-state-label" }, "STATO RIDOTTO"));
+
+    for (let i = 0; i < nCount; i += 1) {
+      const y = yOf(i);
+      svg.append(svgNode("text", { x: 26, y: y + 4, class: "c-label" }, `c${i}`));
+      svg.append(svgNode("line", { x1: wireStart, y1: y, x2: wireEnd, y2: y, class: "c-wire" }));
+      svg.append(svgNode("line", { x1: wireEnd, y1: y, x2: sphereX - radius - 8, y2: y, class: "c-wire", "stroke-dasharray": "2 5" }));
+    }
+    svg.append(svgNode("text", { x: 26, y: workY + 4, class: "c-label" }, "w"));
+    svg.append(svgNode("line", { x1: wireStart, y1: workY, x2: wireEnd, y2: workY, class: "c-wire c-wire-work" }));
+    svg.append(svgNode("text", { x: 68, y: workY + 25, class: "c-register" }, "REGISTRO DI LAVORO COMPRESSO"));
+
+    stages.forEach((stage, index) => {
+      const x = stageX(index);
+      const activeClass = index === current ? " c-active" : "";
+      if (stage.kind === "init") {
+        for (let q = 0; q < nCount; q += 1) {
+          svg.append(svgNode("rect", { x: x - 14, y: yOf(q) - 14, width: 28, height: 28, rx: 6, class: `c-gate${activeClass}` }));
+          svg.append(svgNode("text", { x, y: yOf(q), class: "c-gate-label" }, "H"));
+        }
+        svg.append(svgNode("rect", { x: x - 14, y: workY - 14, width: 28, height: 28, rx: 6, class: `c-gate${activeClass}` }));
+        svg.append(svgNode("text", { x, y: workY, class: "c-gate-label" }, "X"));
+      } else if (stage.kind === "u") {
+        const control = Number.isInteger(stage.control) ? stage.control : 0;
+        const controlY = yOf(control);
+        svg.append(svgNode("line", { x1: x, y1: controlY, x2: x, y2: workY, stroke: index === current ? "var(--amber)" : "var(--dim)", "stroke-width": index === current ? 2.2 : 1.4 }));
+        svg.append(svgNode("circle", { cx: x, cy: controlY, r: 5.5, fill: index === current ? "var(--amber)" : "var(--dim)" }));
+        svg.append(svgNode("rect", { x: x - 27, y: workY - 17, width: 54, height: 34, rx: 7, class: `c-gate${activeClass}` }));
+        svg.append(svgNode("text", { x, y: workY, class: "c-gate-label" }, "Uₐ"));
+      } else if (stage.kind === "qft") {
+        const yTop = yOf(0) - 17;
+        const boxHeight = yOf(nCount - 1) - yOf(0) + 34;
+        svg.append(svgNode("rect", { x: x - 31, y: yTop, width: 62, height: boxHeight, rx: 9, class: `c-gate${activeClass}`, stroke: index === current ? "var(--amber)" : "var(--pink)" }));
+        svg.append(svgNode("text", { x, y: yTop + boxHeight / 2, class: "c-gate-label", transform: `rotate(-90 ${x} ${yTop + boxHeight / 2})` }, "QFT⁻¹"));
+      } else if (stage.kind === "measure") {
+        for (let q = 0; q < nCount; q += 1) {
+          svg.append(svgNode("rect", { x: x - 14, y: yOf(q) - 14, width: 28, height: 28, rx: 6, class: `c-gate${activeClass}`, stroke: index === current ? "var(--amber)" : "var(--green)" }));
+          svg.append(svgNode("text", { x, y: yOf(q), class: "c-gate-label" }, "M"));
+        }
+      }
+      if (stage.kind !== "init0") svg.append(svgNode("text", { x, y: height - 9, class: "c-state-label" }, index + 1));
+    });
+
+    const playX = stageX(current);
+    svg.append(svgNode("line", { x1: playX, y1: 37, x2: playX, y2: height - 29, class: "c-playhead" }));
+    svg.append(svgNode("text", { x: playX, y: 48, class: "c-play-label" }, "▼ ORA"));
+
+    for (let i = 0; i < nCount; i += 1) {
+      const y = yOf(i);
+      const q = bloch?.qubits?.[i];
+      const group = svgNode("g", {});
+      group.append(svgNode("circle", { cx: sphereX, cy: y, r: radius, class: "c-sphere", stroke: q?.active ? "var(--amber)" : "var(--line-strong)", "stroke-width": q?.active ? 2 : 1 }));
+      group.append(svgNode("ellipse", { cx: sphereX, cy: y, rx: radius, ry: radius * .31, class: "c-sphere-axis" }));
+      group.append(svgNode("line", { x1: sphereX, y1: y - radius, x2: sphereX, y2: y + radius, class: "c-sphere-axis" }));
+      if (q) {
+        const color = q.collapsed ? (q.ok ? "var(--green)" : "var(--red)") : (Number(q.len) < .82 ? "var(--cyan)" : phaseColor(Number(q.x), Number(q.y)));
+        const endX = sphereX + Number(q.x) * radius * .9;
+        const endY = y - Number(q.z) * radius * .88 + Number(q.y) * radius * .25;
+        group.append(svgNode("line", { x1: sphereX, y1: y, x2: endX.toFixed(2), y2: endY.toFixed(2), class: "c-bloch-arrow", stroke: color }));
+        group.append(svgNode("circle", { cx: endX.toFixed(2), cy: endY.toFixed(2), r: 3, fill: color }));
+        const status = q.collapsed ? `${q.ok ? "✓" : "×"} ${q.ket}` : q.ket;
+        group.append(svgNode("text", { x: sphereX, y: y + radius + 14, class: "c-ket", fill: color }, status));
+      } else {
+        group.append(svgNode("text", { x: sphereX, y: y + 3, class: "c-ket" }, "…"));
+      }
+      svg.append(group);
+    }
+  }
+
+  function gcd(a, b) {
+    let x = Math.abs(Math.trunc(a));
+    let y = Math.abs(Math.trunc(b));
+    while (y) [x, y] = [y, x % y];
+    return x;
+  }
+
+  function modPow(base, exponent, modulus) {
+    let result = 1;
+    let value = base % modulus;
+    let exp = Math.max(0, Math.trunc(exponent));
+    while (exp > 0) {
+      if (exp % 2 === 1) result = (result * value) % modulus;
+      value = (value * value) % modulus;
+      exp = Math.floor(exp / 2);
+    }
+    return result;
+  }
+
+  function closestFraction(value, maxDenominator) {
+    let best = { numerator: 0, denominator: 1, error: Math.abs(value) };
+    for (let denominator = 1; denominator <= maxDenominator; denominator += 1) {
+      const numerator = Math.round(value * denominator);
+      const error = Math.abs(value - numerator / denominator);
+      if (error < best.error - Number.EPSILON) best = { numerator, denominator, error };
+    }
+    const divisor = gcd(best.numerator, best.denominator) || 1;
+    return { numerator: best.numerator / divisor, denominator: best.denominator / divisor };
+  }
+
+  function resetPipeline() {
+    $("pipelineResult").className = "result-badge";
+    $("pipelineResult").textContent = "In attesa della misura";
+    $("mathPipeline").innerHTML = `
+      <li><span>1</span><small>Misura</small><strong>y = —</strong><p>Esito sugli 8 bit classici.</p></li>
+      <li><span>2</span><small>Fase</small><strong>y / 2⁸ = —</strong><p>Stima della fase periodica.</p></li>
+      <li><span>3</span><small>Frazione continua</small><strong>≈ s / r</strong><p>Il denominatore propone l’ordine.</p></li>
+      <li><span>4</span><small>Ordine candidato</small><strong>r = —</strong><p>Deve essere pari e verificabile.</p></li>
+      <li><span>5</span><small>MCD</small><strong>gcd(7ʳᐟ² ± 1, 15)</strong><p>Estrae eventuali divisori non banali.</p></li>`;
+  }
+
+  function renderPipeline(shot) {
+    const y = clamp(Math.trunc(Number(shot.value) || 0), 0, 255);
+    const phase = y / 256;
+    const fraction = closestFraction(phase, IDEAL.N);
+    const r = fraction.denominator;
+    const even = r % 2 === 0;
+    const verified = even && modPow(IDEAL.a, r, IDEAL.N) === 1;
+    const halfPower = even ? IDEAL.a ** (r / 2) : null;
+    const gMinus = even ? gcd(halfPower - 1, IDEAL.N) : null;
+    const gPlus = even ? gcd(halfPower + 1, IDEAL.N) : null;
+    const computedFactors = [gMinus, gPlus].filter((v) => v != null && v > 1 && v < IDEAL.N);
+    const success = Boolean(shot.ok) || computedFactors.length > 0;
+    const factorA = Number(shot.p) || computedFactors[0] || null;
+    const factorB = Number(shot.q) || (factorA ? IDEAL.N / factorA : null);
+    const result = $("pipelineResult");
+    result.className = `result-badge ${success ? "is-success" : "is-failure"}`;
+    result.textContent = success ? `✓ ${IDEAL.N} = ${factorA} × ${factorB}` : "× Shot non risolutivo";
+    const orderText = verified ? "ordine verificato" : (even ? "candidato parziale" : "denominatore dispari");
+    const gcdText = even ? `gcd(${halfPower}−1,15)=${gMinus}; gcd(${halfPower}+1,15)=${gPlus}` : "r dispari: MCD non applicabili";
+    $("mathPipeline").innerHTML = `
+      <li class="${success ? "is-success" : "is-failure"}"><span>1</span><small>Misura</small><strong>y = ${y}</strong><p>Bitstring ${String(shot.bits || y.toString(2).padStart(8, "0"))}.</p></li>
+      <li><span>2</span><small>Fase</small><strong>${y} / 256 = ${numberIT(phase, 4)}</strong><p>Stima prodotta dalla QFT⁻¹.</p></li>
+      <li><span>3</span><small>Frazione continua</small><strong>≈ ${fraction.numerator} / ${fraction.denominator}</strong><p>Denominatore limitato a N=15.</p></li>
+      <li class="${verified ? "is-success" : ""}"><span>4</span><small>Ordine candidato</small><strong>r = ${r}</strong><p>${orderText}; 7ʳ mod 15 = ${modPow(IDEAL.a, r, IDEAL.N)}.</p></li>
+      <li class="${success ? "is-success" : "is-failure"}"><span>5</span><small>MCD</small><strong>${gcdText}</strong><p>${success ? `Divisori non banali: ${factorA} e ${factorB}.` : "Ripetere lo shot è parte dell’algoritmo."}</p></li>`;
+  }
+
+  function channelElements(key) {
+    const config = CHANNELS[key];
+    const input = $(config.input);
+    const article = input.closest(".noise-control");
+    return { config, input, output: $(config.output), article, toggle: article.querySelector(".channel-toggle") };
+  }
+
+  function constrainThermalTimes(changedKey = "") {
+    const t1 = channelElements("t1_us");
+    const t2 = channelElements("t2_us");
+    const thermalOn = t1.toggle.checked && t2.toggle.checked;
+    const maxT2 = thermalOn ? Math.min(300, Number(t1.input.value) * 2) : 300;
+    t2.input.max = String(maxT2);
+    if (thermalOn && Number(t2.input.value) > maxT2) {
+      t2.input.value = String(maxT2);
+      if (changedKey === "t1_us") setStatus("experimentStatus", `T₂ adeguato a ${maxT2} µs per rispettare T₂ ≤ 2T₁.`, "success");
+    }
+  }
+
+  function refreshNoiseUI() {
+    constrainThermalTimes();
+    Object.keys(CHANNELS).forEach((key) => {
+      const { config, input, output, article, toggle } = channelElements(key);
+      input.disabled = !toggle.checked;
+      article.classList.toggle("is-off", !toggle.checked);
+      output.textContent = config.format(input.value);
+    });
+    $("newRealizationBtn").disabled = $("seedLockInput").checked;
+    updateSnapshot();
+  }
+
+  function markCustom() {
+    state.experiment.preset = "custom";
+    $$(".preset").forEach((button) => {
+      const active = button.dataset.preset === "custom";
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    if (state.experiment.hasResult && !state.experiment.running) setStatus("experimentStatus", "Parametri modificati: riesegui per aggiornare il confronto.");
+  }
+
+  function setThermalEnabled(enabled) {
+    channelElements("t1_us").toggle.checked = enabled;
+    channelElements("t2_us").toggle.checked = enabled;
+  }
+
+  function applyPreset(name) {
+    if (!PRESETS[name]) { markCustom(); return; }
+    state.experiment.preset = name;
+    Object.entries(PRESETS[name]).forEach(([key, value]) => {
+      const { input, toggle } = channelElements(key);
+      input.value = String(value);
+      toggle.checked = name !== "none" && key !== "coherent_overrotation_deg";
+    });
+    setThermalEnabled(name !== "none");
+    $$(".preset").forEach((button) => {
+      const active = button.dataset.preset === name;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    refreshNoiseUI();
+    setStatus("experimentStatus", `${PRESET_LABELS[name]} caricato. Avvia il confronto per applicarlo.`);
+  }
+
+  function collectNoise() {
+    const noise = {};
+    Object.keys(CHANNELS).forEach((key) => {
+      const { input, toggle } = channelElements(key);
+      if (toggle.checked) noise[key] = Number(input.value);
+      else noise[key] = key === "t1_us" || key === "t2_us" ? null : 0;
+    });
+    return noise;
+  }
+
+  function normalizedSeed() {
+    const value = Math.trunc(Number($("seedInput").value));
+    const seed = Number.isFinite(value) ? clamp(value, 0, MAX_SEED) : 42;
+    $("seedInput").value = String(seed);
+    return seed;
+  }
+
+  function randomSeed() {
+    if (globalThis.crypto?.getRandomValues) {
+      const values = new Uint32Array(1);
+      globalThis.crypto.getRandomValues(values);
+      return values[0] % (MAX_SEED + 1);
+    }
+    return Math.floor(Math.random() * (MAX_SEED + 1));
+  }
+
+  function configSnapshot() {
+    return {
+      shots: clamp(Math.trunc(Number($("shotsInput").value)) || 512, 10, MAX_SHOTS),
+      seed: normalizedSeed(),
+      noise: collectNoise(),
+      preset: state.experiment.preset,
+    };
+  }
+
+  function updateSnapshot(snapshot = null, running = false) {
+    const config = snapshot || configSnapshot();
+    const active = Object.entries(config.noise).filter(([, value]) => value != null && Number(value) !== 0).map(([key]) => key);
+    const label = PRESET_LABELS[config.preset] || "Personalizzato";
+    $("configSnapshot").textContent = `${running ? "Esecuzione congelata" : "Configurazione pronta"}: ${label} · ${config.shots} shot · seed ${config.seed}${$("seedLockInput").checked ? " bloccato" : " modificabile"} · ${active.length ? `${active.length} parametri di rumore attivi` : "nessun rumore"}.`;
+  }
+
+  function setExperimentBusy(busy) {
+    state.experiment.running = busy;
+    $("experimentControls").disabled = busy;
+    $$(".preset").forEach((button) => { button.disabled = busy; });
+    if (!busy) refreshNoiseUI();
+  }
+
+  function setupNoiseControls() {
+    $$(".preset").forEach((button) => button.addEventListener("click", () => applyPreset(button.dataset.preset)));
+    Object.keys(CHANNELS).forEach((key) => {
+      const { input, toggle } = channelElements(key);
+      input.addEventListener("input", () => {
+        if (key === "t1_us") constrainThermalTimes("t1_us");
+        CHANNELS[key].format && ($(CHANNELS[key].output).textContent = CHANNELS[key].format(input.value));
+        markCustom();
+        updateSnapshot();
+      });
+      toggle.addEventListener("change", () => {
+        if (key === "t1_us" || key === "t2_us") {
+          setThermalEnabled(toggle.checked);
+          setStatus("experimentStatus", toggle.checked ? "Canale termico T₁/T₂ attivato come coppia fisicamente valida." : "Canale termico T₁/T₂ disattivato.");
+        }
+        markCustom();
+        refreshNoiseUI();
+      });
+    });
+    $("shotsInput").addEventListener("change", updateSnapshot);
+    $("seedInput").addEventListener("change", () => { normalizedSeed(); updateSnapshot(); });
+    $("seedLockInput").addEventListener("change", refreshNoiseUI);
+    $("newRealizationBtn").addEventListener("click", () => {
+      if ($("seedLockInput").checked) return;
+      $("seedInput").value = String(randomSeed());
+      updateSnapshot();
+      runExperiment();
+    });
+    $("runExperimentBtn").addEventListener("click", runExperiment);
+    applyPreset("uc1");
+  }
+
+  async function runExperiment() {
+    if (state.experiment.running) return;
+    const snapshot = configSnapshot();
+    if ((snapshot.noise.t1_us == null) !== (snapshot.noise.t2_us == null)) {
+      setStatus("experimentStatus", "T₁ e T₂ devono essere attivati o disattivati insieme.", "error");
+      return;
+    }
+    if (snapshot.noise.t1_us != null && snapshot.noise.t2_us > 2 * snapshot.noise.t1_us) {
+      setStatus("experimentStatus", "Configurazione non fisica: deve valere T₂ ≤ 2T₁.", "error");
+      return;
+    }
+    const requestId = ++state.experiment.requestId;
+    state.experiment.controller?.abort();
+    const controller = new AbortController();
+    state.experiment.controller = controller;
+    setExperimentBusy(true);
+    updateSnapshot(snapshot, true);
+    setStatus("experimentStatus", `Simulo ${snapshot.shots} shot ideali e ${snapshot.shots} rumorosi con seed ${snapshot.seed}…`, "loading");
+    try {
+      const response = await apiJSON("/api/experiment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shots: snapshot.shots, seed: snapshot.seed, noise: snapshot.noise }),
+        signal: controller.signal,
+      });
+      if (requestId !== state.experiment.requestId) return;
+      renderExperiment(response, snapshot);
+      state.experiment.hasResult = true;
+      const independent = response.metadata?.simulation_seeds?.independent_streams === true;
+      const streamNote = independent
+        ? "stream ideali e rumorosi indipendenti"
+        : "stesso campione riusato perché il rumore è disattivato";
+      setStatus("experimentStatus", `Confronto completato: ${response.shots ?? response.config?.shots ?? snapshot.shots} shot per distribuzione; seed radice ${response.seed ?? response.config?.seed ?? snapshot.seed}, ${streamNote}.`, "success");
+    } catch (error) {
+      if (error.name !== "AbortError" && requestId === state.experiment.requestId) setStatus("experimentStatus", `Esperimento non riuscito: ${errorMessage(error)}`, "error");
+    } finally {
+      if (requestId === state.experiment.requestId) setExperimentBusy(false);
+    }
+  }
+
+  function ciText(value) {
+    if (!value) return "IC 95% non disponibile";
+    const low = Array.isArray(value) ? value[0] : (value.lower ?? value.low ?? value.min);
+    const high = Array.isArray(value) ? value[1] : (value.upper ?? value.high ?? value.max);
+    return low == null || high == null ? "IC 95% non disponibile" : `IC 95% ${percentMetric(low)}–${percentMetric(high)}`;
+  }
+
+  function formatFactors(value) {
+    if (value == null || (Array.isArray(value) && value.length === 0)) return "non osservati";
+    if (Array.isArray(value)) {
+      if (value.length === 2 && value.every((item) => typeof item !== "object")) return `${value[0]} × ${value[1]}`;
+      return value.map((item) => Array.isArray(item) ? item.join(" × ") : String(item)).join(", ");
+    }
+    if (typeof value === "object") return Object.values(value).join(" × ");
+    return String(value);
+  }
+
+  function normalizeDistribution(distribution, shots) {
+    const bins = Array.from({ length: 256 }, (_, value) => ({ value, probability: 0, count: 0, ok: false, peak: PEAKS.includes(value) }));
+    (Array.isArray(distribution) ? distribution : []).forEach((item) => {
+      let value = Number(item.value);
+      if (!Number.isFinite(value) && typeof item.value === "string") value = parseInt(item.value, 2);
+      value = Math.trunc(value);
+      if (value < 0 || value > 255) return;
+      const count = Number(item.count) || 0;
+      const probability = Number.isFinite(Number(item.probability)) ? Number(item.probability) : count / Math.max(1, shots);
+      bins[value] = { value, count, probability, ok: Boolean(item.ok ?? item.factor_success), peak: Boolean(item.peak ?? item.theoretical_peak) || PEAKS.includes(value) };
+    });
+    return bins;
+  }
+
+  function renderExperiment(response, snapshot) {
+    const ideal = response.ideal || {};
+    const noisy = response.noisy || {};
+    const comparison = response.comparison || {};
+    const idealYield = ratio(ideal.factor_yield);
+    const noisyYield = ratio(noisy.factor_yield);
+    const delta = idealYield == null || noisyYield == null ? null : (noisyYield - idealYield) * 100;
+
+    $("emptyResults").hidden = true;
+    $("experimentResults").hidden = false;
+    $("idealYield").textContent = percentMetric(ideal.factor_yield);
+    $("noisyYield").textContent = percentMetric(noisy.factor_yield);
+    $("idealCI").textContent = ciText(ideal.factor_ci || ideal.wilson_ci);
+    $("noisyCI").textContent = ciText(noisy.factor_ci || noisy.wilson_ci);
+    const deltaEl = $("yieldDelta");
+    deltaEl.textContent = delta == null ? "—" : `${delta > 0 ? "+" : ""}${numberIT(delta, 1)} pp`;
+    deltaEl.className = delta == null ? "" : delta < 0 ? "is-negative" : delta > 0 ? "is-positive" : "";
+    const deltaCI = comparison.factor_yield_delta_ci;
+    $("yieldDeltaCI").textContent = deltaCI
+      ? `IC 95% ${numberIT(Number(deltaCI.low) * 100, 1)}–${numberIT(Number(deltaCI.high) * 100, 1)} pp`
+      : "IC 95% della differenza non disponibile";
+    $("peakMass").textContent = percentMetric(noisy.peak_mass);
+    $("usefulPeakMass").textContent = `picchi utili: rumore ${percentMetric(noisy.useful_peak_mass)} · ideale ${percentMetric(ideal.useful_peak_mass)}`;
+    $("tvdValue").textContent = Number.isFinite(Number(comparison.tvd)) ? numberIT(comparison.tvd, 3) : "—";
+
+    const hasDistance = Number.isFinite(Number(comparison.hellinger_distance));
+    const hellinger = hasDistance ? comparison.hellinger_distance : comparison.hellinger_fidelity;
+    $("hellingerLabel").textContent = hasDistance ? "Distanza Hellinger" : "Fedeltà Hellinger";
+    $("hellingerValue").textContent = Number.isFinite(Number(hellinger)) ? numberIT(hellinger, 3) : "—";
+    $("hellingerHelp").textContent = hasDistance ? "0 = distribuzioni identiche" : "1 = distribuzioni identiche";
+    const idealEntropy = ideal.entropy ?? ideal.entropy_bits;
+    const noisyEntropy = noisy.entropy ?? noisy.entropy_bits;
+    $("idealEntropy").textContent = Number.isFinite(Number(idealEntropy)) ? `${numberIT(idealEntropy, 3)} bit` : "—";
+    $("noisyEntropy").textContent = Number.isFinite(Number(noisyEntropy)) ? `${numberIT(noisyEntropy, 3)} bit` : "—";
+    $("idealFactors").textContent = formatFactors(ideal.factors_found);
+    $("noisyFactors").textContent = formatFactors(noisy.factors_found);
+
+    const shots = Number(response.shots ?? response.config?.shots) || snapshot.shots;
+    const idealBins = normalizeDistribution(ideal.distribution, shots);
+    const noisyBins = normalizeDistribution(noisy.distribution, shots);
+    renderDistributionChart(idealBins, noisyBins, shots);
+    renderIterations(noisy.iterations || []);
+  }
+
+  function renderDistributionChart(ideal, noisy, shots) {
+    const svg = $("distributionChart");
+    const width = 1120;
+    const height = 390;
+    const margin = { top: 32, right: 24, bottom: 54, left: 60 };
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    const maxProbability = Math.max(.01, ...ideal.map((bin) => bin.probability), ...noisy.map((bin) => bin.probability));
+    const yMax = Math.ceil(maxProbability * 1.12 * 100) / 100;
+    const x = (value) => margin.left + (value / 255) * plotWidth;
+    const y = (probability) => margin.top + plotHeight - (probability / yMax) * plotHeight;
+    const barGroupWidth = plotWidth / 256;
+    const barWidth = Math.max(1.25, barGroupWidth * .38);
+    const topIdeal = [...ideal].sort((a, b) => b.probability - a.probability).slice(0, 4).map((bin) => bin.value);
+    const topNoisy = [...noisy].sort((a, b) => b.probability - a.probability).slice(0, 4).map((bin) => bin.value);
+    const summary = `Con ${shots} shot per distribuzione, i quattro esiti più probabili sono ${topIdeal.join(", ")} nell’ideale e ${topNoisy.join(", ")} nel caso rumoroso.`;
+    clearSvg(svg, "Distribuzioni ideale e rumorosa su tutti i 256 esiti", `${summary} Le linee tratteggiate indicano i picchi teorici 0, 64, 128 e 192.`);
+
+    for (let i = 0; i <= 4; i += 1) {
+      const probability = (yMax * i) / 4;
+      const yy = y(probability);
+      svg.append(svgNode("line", { x1: margin.left, y1: yy, x2: width - margin.right, y2: yy, stroke: "rgba(188,195,225,.12)", "stroke-width": 1 }));
+      svg.append(svgNode("text", { x: margin.left - 10, y: yy + 4, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "end" }, `${numberIT(probability * 100, probability < .1 ? 1 : 0)}%`));
+    }
+
+    PEAKS.forEach((peak) => {
+      const xx = x(peak);
+      svg.append(svgNode("line", { x1: xx, y1: margin.top - 7, x2: xx, y2: margin.top + plotHeight, stroke: "var(--cyan)", "stroke-width": 1.3, "stroke-dasharray": "4 5", opacity: .75 }));
+      svg.append(svgNode("text", { x: xx + (peak === 0 ? 4 : 0), y: 17, fill: "var(--cyan)", "font-size": 9, "font-family": "var(--mono)", "text-anchor": peak === 0 ? "start" : "middle" }, `picco ${peak}`));
+    });
+
+    ideal.forEach((bin, index) => {
+      if (bin.probability <= 0) return;
+      const xx = x(index) - barWidth - .25;
+      const yy = y(bin.probability);
+      const rect = svgNode("rect", { x: xx, y: yy, width: barWidth, height: margin.top + plotHeight - yy, fill: "var(--violet)", opacity: .76, rx: .7 });
+      rect.append(svgNode("title", {}, `Ideale · y=${index}: ${percentMetric(bin.probability, 2)} (${bin.count} conteggi)`));
+      svg.append(rect);
+    });
+    noisy.forEach((bin, index) => {
+      if (bin.probability <= 0) return;
+      const xx = x(index) + .25;
+      const yy = y(bin.probability);
+      const rect = svgNode("rect", { x: xx, y: yy, width: barWidth, height: margin.top + plotHeight - yy, fill: "var(--amber)", opacity: .82, rx: .7 });
+      rect.append(svgNode("title", {}, `Rumoroso · y=${index}: ${percentMetric(bin.probability, 2)} (${bin.count} conteggi)`));
+      svg.append(rect);
+    });
+
+    [0, 32, 64, 96, 128, 160, 192, 224, 255].forEach((tick) => {
+      const xx = x(tick);
+      svg.append(svgNode("line", { x1: xx, y1: margin.top + plotHeight, x2: xx, y2: margin.top + plotHeight + 5, stroke: "var(--dim)" }));
+      svg.append(svgNode("text", { x: xx, y: height - 27, fill: "var(--muted)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": tick === 0 ? "start" : tick === 255 ? "end" : "middle" }, tick));
+    });
+    svg.append(svgNode("text", { x: margin.left + plotWidth / 2, y: height - 6, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "middle" }, "esito misurato y (0…255)"));
+    $("chartSummary").textContent = summary;
+  }
+
+  function renderIterations(iterations) {
+    const list = $("iterationList");
+    list.replaceChildren();
+    const sample = Array.isArray(iterations) ? iterations.slice(0, 24) : [];
+    if (!sample.length) {
+      const empty = document.createElement("p");
+      empty.className = "details-help";
+      empty.textContent = "Il backend non ha restituito la memoria dei singoli shot.";
+      list.append(empty);
+      return;
+    }
+    sample.forEach((iteration, index) => {
+      const ok = Boolean(iteration.ok);
+      const cell = document.createElement("span");
+      cell.className = `iteration${ok ? " is-ok" : ""}`;
+      cell.title = `Shot ${index + 1}: esito ${iteration.value}; ${ok ? "estrae i fattori" : "non risolutivo"}`;
+      const value = document.createElement("b");
+      value.textContent = String(iteration.value);
+      const status = document.createElement("small");
+      status.textContent = ok ? "✓ utile" : "× no";
+      cell.append(value, status);
+      list.append(cell);
+    });
+  }
+
+  function setupIdealControls() {
+    $("resetStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(0); });
+    $("playStageBtn").addEventListener("click", togglePlayback);
+    $("nextStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(state.ideal.stage + 1); });
+    $("newMeasureBtn").addEventListener("click", () => { stopPlayback(); if (state.ideal.info) loadStage(state.ideal.info.stages.length - 1); });
+    $("stageSelect").addEventListener("change", (event) => { stopPlayback(); loadStage(Number(event.target.value)); });
+  }
+
+  function init() {
+    setupTabs();
+    setupDialog();
+    setupIdealControls();
+    setupNoiseControls();
+    resetPipeline();
+    initIdeal();
+  }
+
+  init();
+})();

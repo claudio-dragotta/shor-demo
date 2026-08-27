@@ -1,19 +1,18 @@
-"""Generalizzazione a un N libero per la demo (richiesta dal prof: "posso mettere qualsiasi
-numero"). Per N in {15,21,35} (i tre validati nelle campagne sperimentali della tesi, vedi
-Extra/experiments/campagne_classiche_M1-M4/) usa la STESSA base `a` e la STESSA
-`shor_core.shor_circuit` già validate — zero duplicazione, i risultati restano confrontabili con
-i numeri in tesi.
+"""Percorso locale per esperimenti con N libero, non esposto dalla demo web v2.
 
-Per qualsiasi altro N: **non** uso `shor_core.c_amod` (matrice di permutazione via
-`UnitaryGate`, dimensione 2^n_work × 2^n_work — esponenziale, e nella pratica quasi sempre
-"inutilizzabile" sotto rumore: lo stesso file della tesi, `test_beauregard_cx.py`, misura per
-N=21 P_sopravvivenza≈1e-44 con questo metodo). Uso invece `beauregard_c_amod` (Beauregard 2002,
-`beauregard.py`) — la STESSA decomposizione già usata da `shor_circuit` per N=21/35, ma è
-generica in N (nessun hard-coding a 21/35 dentro beauregard.py: quella restrizione vive solo
-nel dispatch di `shor_circuit`, non nella matematica del metodo). O(n³) porte invece di
-O(4^n): per N=21 ~2594 CX contro i ~10040 dell'approccio a matrice densa. Non tocco
-`shor_core.py` (i numeri già pubblicati in tesi restano quelli), replico solo lo stesso schema
-del suo ramo Beauregard, tolto il vincolo N∈{21,35}.
+Le configurazioni N in {15,21,35} sono mantenute come preset. L'API interattiva resta fissata
+a N=15/a=7 per costo di simulazione, non per un dubbio sull'aritmetica: i moltiplicatori
+Beauregard usati da N=21/35 hanno truth table, ancilla e QPE end-to-end validate. Il ramo
+generico usa la stessa costruzione ma, per N diversi, non è coperto da quella validazione.
+
+Per qualsiasi altro N non uso `shor_core.c_amod`, basato su una matrice `UnitaryGate` di
+dimensione esponenziale. Uso `beauregard_c_amod` (Beauregard 2002, `beauregard.py`), la stessa
+decomposizione aritmetica dei preset N=21/35, generica in N. Il costo resta però elevato: nel
+contratto riproducibile Qiskit 2.5.0, `N=21, a=2, n_count=8`, compilato nella base
+RZ/SX/X/CX, contiene 21.036 CX e ha profondità 23.081. Il valore
+`(1-lambda_2q)^21036 = 7,237862389e-10` per
+`lambda_2q=0,001` è soltanto un proxy indipendente di "nessun evento 2Q", non una probabilità
+di successo, una fedeltà del circuito o una previsione del rendimento di Shor.
 
 Isolamento in sottoprocesso per le chiamate ad Aer: stesso identico pattern di
 quantum_backend.py (Aer con method='matrix_product_state' va in segfault nel thread interno di
@@ -34,11 +33,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shor_core import inverse_qft, shor_circuit, extract_factors, build_noise_model  # noqa: E402
 from beauregard import beauregard_c_amod  # noqa: E402
 
-VALIDATED_N = {15, 21, 35}
-VALIDATED_A = {15: 7, 21: 2, 35: 6}
-VALIDATED_N_COUNT = {15: 8, 21: 10, 35: 12}
+LEGACY_PRESET_N = {15, 21, 35}
+LEGACY_PRESET_A = {15: 7, 21: 2, 35: 6}
+LEGACY_PRESET_N_COUNT = {15: 8, 21: 10, 35: 12}
 
-# Tetto di sicurezza per N fuori da VALIDATED_N — misurato, non stimato a occhio: la QFT⁻¹ sul
+# Tetto di sicurezza per N fuori dai preset legacy — misurato, non stimato a occhio: la QFT⁻¹ sul
 # registro count (n_count qubit) è il vero collo di bottiglia per un simulatore MPS su un
 # circuito così entangled (non a caso: è la stessa ragione per cui Shor è interessante su un
 # computer quantistico reale — se fosse facile simularlo classicamente per N grandi, non
@@ -50,8 +49,8 @@ N_CAP = 48  # n_count_for(48) resta a 12; n_count_for(49) sale già a 13 (vedi s
 
 
 def n_count_for(N):
-    if N in VALIDATED_N_COUNT:
-        return VALIDATED_N_COUNT[N]
+    if N in LEGACY_PRESET_N_COUNT:
+        return LEGACY_PRESET_N_COUNT[N]
     return ceil(2 * log2(N)) + 1  # stesso margine già usato per N=21/35 (2^n_count >= N^2, +1 di scorta)
 
 
@@ -134,10 +133,10 @@ def classical_preprocess(N, seed=None):
       commento in cima al file)."""
     if not isinstance(N, int) or N < 4:
         raise ValueError("N deve essere un intero >= 4.")
-    if N >= N_CAP and N not in VALIDATED_N:
+    if N >= N_CAP and N not in LEGACY_PRESET_N:
         raise ValueError(
             f"N={N} supera il tetto di sicurezza della demo live (N<{N_CAP}). Prova un N più "
-            "piccolo, oppure uno dei tre valori validati in tesi (15, 21, 35)."
+            "piccolo, oppure uno dei tre preset legacy (15, 21, 35)."
         )
     if N % 2 == 0:
         return dict(done=True, reason="N è pari", p=2, q=N // 2, a=None, r=None)
@@ -148,9 +147,13 @@ def classical_preprocess(N, seed=None):
     if _is_prime(N):
         return dict(done=True, reason="N è primo: non è fattorizzabile", p=None, q=None, a=None, r=None)
 
-    if N in VALIDATED_A:
-        a = VALIDATED_A[N]
-        return dict(done=False, reason=None, p=None, q=None, a=a, validated=True)
+    if N in LEGACY_PRESET_A:
+        a = LEGACY_PRESET_A[N]
+        return dict(
+            done=False, reason=None, p=None, q=None, a=a,
+            validated=True, arithmetic_validated=True,
+            web_supported=N == 15, legacy_preset=True,
+        )
 
     # Un solo tentativo (non una manciata): è esattamente la formulazione da manuale di Shor
     # ("scegli una a a caso; se gcd(a,N)>1 hai avuto fortuna, altrimenti procedi al circuito").
@@ -172,33 +175,43 @@ def classical_preprocess(N, seed=None):
             "ragionevole di tentativi — prova un altro N."
         )
     a, r, nontrivial = found
-    return dict(done=False, reason=None, p=None, q=None, a=a, validated=False, r=r, nontrivial_layers=nontrivial)
+    return dict(
+        done=False, reason=None, p=None, q=None, a=a,
+        validated=False, arithmetic_validated=False, web_supported=False,
+        r=r, nontrivial_layers=nontrivial,
+    )
 
 
 def speed_warning(N, shots, noise_cfg=None, extra_noise=None):
     """Stima onesta in secondi, basata sul benchmark reale in _per_shot_budget (non una formula
-    inventata): per N non validati, e specialmente con rumore attivo, il tempo può salire a
-    diversi minuti — meglio dirlo PRIMA che l'utente prema Esegui, non dopo un timeout."""
-    if N in VALIDATED_N:
-        return None  # percorso già validato nelle campagne sperimentali, tempi noti e accettabili
+    inventata): fuori dall'istanza web N=15, e specialmente con rumore attivo, il tempo può
+    salire a diversi minuti — meglio dirlo PRIMA che l'utente prema Esegui, non dopo un timeout."""
+    if N == 15:
+        return None
+    if N in LEGACY_PRESET_N:
+        return (
+            f"N={N} usa aritmetica Beauregard validata, ma è escluso dalla demo web "
+            "interattiva per il costo della simulazione classica."
+        )
     est = 25 + shots * _per_shot_budget(N, noise_cfg, extra_noise)
     if est > 90:
         minutes = est / 60
         return (f"N={N} con {shots} iterazioni: stima ottimistica ~{minutes:.0f} minuti "
                 f"{'(rumore attivo, molto più lento del caso ideale) ' if (noise_cfg or extra_noise) else ''}"
                 "— troppo per una demo dal vivo. Riduci le iterazioni o usa un N più piccolo.")
-    return (f"N={N} non è tra i tre validati in tesi: stima ~{est:.0f}s per {shots} iterazioni "
+    return (f"N={N} non è coperto dalla validazione aritmetica dei preset: "
+            f"stima ~{est:.0f}s per {shots} iterazioni "
             "(tempo non garantito, può variare).")
 
 
 def build_circuit(N, a, n_count):
-    """Circuito QPE di Shor. N in {15,21,35}: richiama shor_core.shor_circuit (stessa funzione
-    già validata dalle campagne sperimentali, incluso il suo ramo Beauregard per 21/35).
-    Altrimenti: stesso schema del ramo Beauregard di shor_circuit, letteralmente — H sul
+    """Circuito QPE locale. N in {15,21,35}: richiama shor_core.shor_circuit; N=21/35 hanno
+    aritmetica validata ma non sono esposti dalla demo web per costo. Per gli altri N usa lo
+    stesso schema del ramo Beauregard di shor_circuit — H sul
     registro count, |1> sul registro x, U(a^2^j) controllate via beauregard_c_amod, QFT^-1,
     misura — solo senza il vincolo N∈{21,35} che vive nel dispatch di shor_circuit, non nella
     matematica del metodo (beauregard_c_amod è generico in N)."""
-    if N in VALIDATED_N:
+    if N in LEGACY_PRESET_N:
         return shor_circuit(N, a, n_count)
 
     from qiskit import QuantumCircuit
@@ -309,7 +322,7 @@ def run_shots(N, a, n_count, noise_cfg, shots, seed, extra_noise=None):
     sim = AerSimulator(noise_model=nm, method="matrix_product_state")
     # opt_level=1 (non 2): per il ramo generico la sintesi più aggressiva di livello 2 è risultata
     # ~10x più lenta in transpile a parità di profondità finale (misurato su N=33).
-    opt_level = 2 if N in VALIDATED_N else 1
+    opt_level = 2 if N in LEGACY_PRESET_N else 1
     tqc = transpile(qc, sim, optimization_level=opt_level, seed_transpiler=seed)
     result = sim.run(tqc, shots=shots, seed_simulator=seed).result()
     return result.get_counts()
@@ -331,11 +344,11 @@ def _run_worker(mode, params, timeout=120):
 def _per_shot_budget(N, noise_cfg, extra_noise):
     """Secondi/shot, misurati (non stimati): il rumore rallenta Aer molto più del previsto perché
     ogni shot ricampiona gli operatori di Kraus invece di riusare un'unica evoluzione — e il
-    ramo generico (N fuori da VALIDATED_N, circuito Beauregard) è già più pesante di suo.
+    ramo generico (N fuori dai preset legacy, circuito Beauregard) è già più pesante di suo.
     Benchmark reali su N=33 (unico N<48 osservato che arriva davvero al circuito con questa
     ricerca di base): ideale 100 shot in 18.5s (~0.19s/shot), con UC1 100 shot in 210s (~2.1s/shot)."""
     has_noise = bool(noise_cfg) or bool(extra_noise)
-    if N in VALIDATED_N:
+    if N in LEGACY_PRESET_N:
         return 0.15 if has_noise else 0.05
     return 3.0 if has_noise else 0.3
 

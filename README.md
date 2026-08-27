@@ -1,54 +1,206 @@
-# Shor demo — interactive simulator
+# Demo di Shor — simulatore ideale e laboratorio del rumore
 
-Interactive web demo for the master's thesis *"Shor's algorithm on NISQ hardware & Quantum
-Error Correction"*: factor a number with Shor while watching the **circuit** and a **Bloch
-sphere per qubit** evolve stage by stage, then repeat the measurement over many iterations to
-see how the result emerges.
+Demo interattiva della tesi magistrale sull'algoritmo di Shor. La versione 2 usa una sola
+istanza piccola e verificabile, **N = 15**, **a = 7**, con 8 qubit di conteggio. L'obiettivo
+non è suggerire che una QPU fisica possa essere perfetta, ma confrontare in modo controllato:
 
-Live circuit + Bloch state are computed with **Qiskit** (real statevector, per-qubit reduced
-density matrix); the multi-run statistics use **Qiskit Aer**. Backend **FastAPI**, frontend
-plain HTML/CSS/JS (no framework).
+1. un **simulatore ideale**, che mostra il circuito e il post-processing di Shor senza rumore;
+2. un **laboratorio di rumore**, che ripete lo stesso esperimento introducendo canali di errore
+   separati o combinati.
 
-This is a standalone deploy repo. The `shor_core.py` and `beauregard.py` modules are vendored
-from the thesis monorepo (`Extra/experiments/campagne_classiche_M1-M4/`); the numbers stay
-identical to the validated thesis campaigns.
+La demo pubblica è disponibile su
+[shor-demo-6knp.onrender.com](https://shor-demo-6knp.onrender.com/).
 
-## Run locally
+## Cosa mostra la demo
 
-```bash
-pip install -r requirements.txt
-uvicorn server:app --reload --port 8501
-# apre http://localhost:8501
+Nel percorso ideale si seguono sovrapposizione, moltiplicazione modulare controllata, QFT
+inversa, misura, approssimazione con frazioni continue e calcolo dei fattori tramite MCD. Per
+questa istanza la distribuzione teorica ha quattro picchi equiprobabili:
+
+```text
+y = 0, 64, 128, 192       P(y) = 25% ciascuno
 ```
 
-## Deploy on Render
+`y = 0` non permette di ricavare il periodo; gli altri tre picchi producono i fattori 3 e 5.
+Anche il circuito ideale ha quindi un rendimento per singolo shot del 75%, non del 100%.
 
-Render → **New → Blueprint** → select this repo. It reads `render.yaml` (Docker, `plan:
-starter` = always-on; change to `free` for the spin-down free tier). Or **New → Web Service**
-→ Runtime *Docker*, Dockerfile `./Dockerfile`.
+Il laboratorio rumoroso mantiene visibile la baseline ideale e permette di studiare:
 
-`$PORT` is injected automatically; health check at `/health`.
+- depolarizzazione sulle porte a uno e due qubit;
+- rilassamento energetico (`T1`) e dephasing (`T2`), con il vincolo fisico `T2 <= 2*T1`;
+- errori di readout asimmetrici `P(1|0)` e `P(0|1)`;
+- sovrarotazione coerente sulle porte fisiche a un qubit (`SX/X`); le `RZ` sono trattate
+  come aggiornamenti virtuali del frame e non ricevono durata o rumore.
 
-**Auto-deploy:** `autoDeploy` is on, so every push to `main` redeploys.
+Il preset **Rumore off** disattiva tutti i canali: da lì si può abilitarne uno solo e
+attribuire la variazione osservata a quel meccanismo, mantenendo invariati circuito, budget
+di shot e seed radice.
 
-## What it does
+Oltre al rendimento di fattorizzazione vengono riportati massa sui picchi, massa sui picchi
+utili, entropia, distanza di variazione totale e distanza/fedeltà di Hellinger. Queste metriche
+sono necessarie perché, per `N=15, a=7`, anche una distribuzione uniforme genera fattori per
+63 dei 256 bitstring: un pavimento casuale del **24,609375%**.
 
-- **Senza rumore**: one run at a time — the playhead sweeps the circuit, the Bloch spheres
-  evolve (superposition → entanglement → collapse). If the measured outcome doesn't yield the
-  factors, a banner explains it's probabilistic and lets you choose how many iterations to run
-  — then each iteration is animated and its result shown.
-- **Con rumore**: adds the NISQ noise presets (UC1 / UC2) to the statistics.
-- Best experience at **N = 15** (12 qubits, fast). Larger N (e.g. 21, 35) are shown as a
-  static circuit with a note — they are too large to simulate live, which is exactly why
-  Shor's algorithm is hard to simulate classically.
+## Interpretazione corretta
 
-## Files
+La modalità ideale è una simulazione matematica di un circuito privo di errori, non
+l'esecuzione su una “QPU senza rumore”. Il modello rumoroso è un **preset NISQ illustrativo**:
+serve a isolare gli effetti dei diversi canali, ma non riproduce una specifica macchina reale.
+In particolare non include una coupling map hardware, routing dipendente dal dispositivo,
+calibrazioni per singolo qubit, drift temporale o crosstalk caratterizzato sperimentalmente.
 
-| File | Role |
+Le sfere di Bloch riguardano i qubit di conteggio. In presenza di entanglement il loro vettore
+può accorciarsi perché rappresenta lo stato ridotto del singolo qubit. Un errore di readout,
+invece, agisce sul bit classico dopo la misura e non deve modificare la sfera.
+
+## Avvio locale
+
+È richiesto Python 3.12 (la stessa versione usata dall'immagine Docker).
+
+```bash
+python -m venv .venv
+# PowerShell: .venv\Scripts\Activate.ps1
+# bash/zsh:   source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+uvicorn server:app --reload --port 8501
+```
+
+Aprire <http://localhost:8501>. La documentazione OpenAPI è disponibile in locale su
+<http://localhost:8501/api/docs>.
+
+## Test
+
+Le dipendenze di test sono separate da quelle runtime, così il deploy Render non installa
+strumenti di sviluppo:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+La suite controlla:
+
+- truth table controllata e orbita corretta `1 → 7 → 4 → 13 → 1` del moltiplicatore
+  modulare per `N=15, a=7`;
+- supporto e probabilità esatte della distribuzione ideale `N=15`;
+- post-processing dei picchi e rendimento teorico del 75%;
+- pavimento casuale `63/256`;
+- validazione del contratto HTTP e coerenza tra fattori dichiarati e shot riusciti;
+- truth table esaustiva dei moltiplicatori Beauregard usati per `N=21` e `N=35`, inclusa
+  la pulizia di registro ausiliario e ancilla;
+- confronto end-to-end della QPE Beauregard con la legge teorica (TVD inferiore a
+  `1,4e-9` nei casi coperti).
+
+## API v2
+
+L'esperimento principale usa `POST /api/experiment`. I parametri dell'istanza interattiva
+`N=15`, `a=7` e `n_count=8` sono fissati dal server e non sono accettati dal client. `shots`
+deve essere compreso tra 10 e 2048; il `seed` opzionale tra 0 e 2147483647. Il limite evita
+che una singola prova interattiva monopolizzi a lungo le risorse del servizio Render.
+
+Esempio di richiesta:
+
+```json
+{
+  "shots": 128,
+  "seed": 42,
+  "noise": {
+    "eps_1q": 0.001,
+    "eps_2q": 0.01,
+    "t1_us": 100,
+    "t2_us": 80,
+    "readout_0to1": 0.02,
+    "readout_1to0": 0.03,
+    "coherent_overrotation_deg": 0
+  }
+}
+```
+
+La risposta contiene la distribuzione completa sui 256 outcome, gli shot reali in ordine,
+intervalli di confidenza e metriche per i casi ideale e rumoroso:
+
+```text
+schema_version, random_factor_floor
+config
+  └─ N, a, n_count, shots, seed, noise
+ideal, noisy
+  ├─ distribution, memory, iterations, shots, n_ok, factors_found
+  └─ factor_yield, wilson_ci, peak_mass, useful_peak_mass, entropy_bits
+comparison
+  └─ tvd, hellinger_fidelity, hellinger_distance, factor_yield_delta e relativo IC Newcombe
+metadata
+  └─ versions, circuit, model, simulation_seeds, theoretical_peaks, useful_peaks
+```
+
+Quando il rumore è attivo, il seed richiesto genera due stream Aer deterministici distinti
+per baseline e campione rumoroso; l'IC Newcombe è quindi quello per campioni indipendenti.
+Con rumore nullo la memoria è riusata esattamente e l'intervallo della differenza è `[0,0]`.
+
+`factors_found` è valorizzato soltanto se `n_ok > 0`; quando presente deve contenere una coppia
+il cui prodotto è 15. `GET /health` espone esclusivamente lo stato del servizio.
+
+## Deploy su Render
+
+Il repository contiene `render.yaml` e un `Dockerfile` minimale. Su Render scegliere **New →
+Blueprint** e collegare il repository, oppure creare un Web Service con runtime Docker. Render
+inietta `$PORT`; il container espone 8501 come valore locale predefinito e usa `/health` come
+health check.
+
+La `.dockerignore` esclude repository Git, ambienti virtuali, cache, test e documentazione dal
+contesto dell'immagine. Per un'esposizione pubblica più ampia della demo didattica sono inoltre
+raccomandati rate limiting a monte, limiti di timeout/memoria del container, log senza payload
+completi e disabilitazione della documentazione OpenAPI in produzione.
+
+## Ambito della demo pubblica e validazione Beauregard
+
+I moduli Python sono copie locali (“vendored”) del progetto di tesi. La superficie HTTP della
+v2 resta intenzionalmente fissata a `N=15, a=7`: è abbastanza piccola per una risposta
+interattiva e consente il confronto ideale/rumoroso entro i limiti di Render.
+
+L'aritmetica Beauregard è ora validata separatamente per tutti i moltiplicatori non banali
+usati dalle istanze `N=21` (`2`, `4`, `16`) e `N=35` (`6`), su entrambi i rami del controllo,
+per ogni input valido e con ancilla puliti. Anche le distribuzioni QPE complete coincidono con
+la legge teorica (`TVD=1,38e-9` per `N=21, r=6`; `2,50e-13` per `N=35, r=2`). Queste istanze
+non vengono comunque esposte dalla demo pubblica: richiedono molte più risorse e non fanno
+parte del contratto interattivo v2. La validazione aritmetica non rende retroattivamente
+validi i risultati rumorosi storici, che vanno rigenerati.
+
+Il costo è misurato nello stesso ambiente bloccato da `requirements.txt`: con Qiskit 2.5.0,
+`optimization_level=2`, `seed_transpiler=20260819` e base `rz/sx/x/cx`, il circuito
+`N=21, a=2, n_count=8` contiene **21.036 CX** e ha profondità **23.081**. La quantità
+`(1-15 lambda_2q/16)^21036 = 7,237862389e-10` (circa `7,24e-10`) per `lambda_2q=0,001` è riportata esclusivamente come
+**proxy di nessun evento 2Q indipendente**. Non è la probabilità di successo di Shor, non è
+la fedeltà del circuito e non sostituisce una simulazione rumorosa.
+
+La v2 corregge inoltre il moltiplicatore textbook `N=15, a=7`: la sua orbita è ora
+`1 → 7 → 4 → 13 → 1`. La versione precedente conservava per caso lo stesso ordine 4 e quindi
+gli stessi picchi ideali, ma realizzava una permutazione diversa. Le vecchie campagne di
+rumore generate con quel circuito hanno un diverso conteggio di gate e non devono essere
+confrontate direttamente con la v2 senza essere rigenerate.
+
+## Struttura
+
+| Percorso | Ruolo |
 |---|---|
-| `server.py` | FastAPI app: serves the frontend + `/api/factor`, `/api/bloch`, `/api/run`, `/health` |
-| `api_backend.py` | Factor pre-processing, per-stage Bloch (statevector + partial trace), run statistics |
-| `shor_general.py` | Free-N Shor circuit (reuses `shor_core` for N∈{15,21,35}, Beauregard otherwise) |
-| `shor_core.py`, `beauregard.py` | Vendored from the thesis (validated circuits) |
-| `frontend/` | `index.html`, `style.css`, `app.js` |
-| `Dockerfile`, `render.yaml` | Container build + Render Blueprint |
+| `server.py` | Applicazione FastAPI, validazione HTTP e frontend statico |
+| `api_backend.py` | Esperimento ideale/rumoroso, metriche e intervalli di confidenza |
+| `shor_core.py` | Circuiti validati N=15/21/35 e post-processing; l'API usa solo `N=15` |
+| `beauregard.py` | Aritmetica modulare N=21/35 validata, non esposta dall'API pubblica |
+| `shor_general.py` | Percorso locale per input generici, non esposto dalla demo web v2 |
+| `frontend/` | Interfaccia HTML/CSS/JavaScript |
+| `tests/` | Regressioni scientifiche N=15/21/35 e contratto API |
+| `Dockerfile`, `render.yaml` | Build e configurazione Render |
+
+## Riproducibilità
+
+Specificare `seed` per ripetere esattamente il campionamento. Se viene omesso, il server ne
+genera uno e lo restituisce nella risposta: conservarlo insieme ai parametri di rumore rende
+l'esperimento riproducibile. Quando il rumore è attivo, il seed è una radice da cui il server
+deriva stream indipendenti per ideale e rumoroso, esposti in `metadata.simulation_seeds`;
+a rumore zero viene invece riusato lo stesso campione. Shot diversi sono campioni
+indipendenti; non vanno chiamati
+“iterazioni” nel senso delle campagne sperimentali della tesi, dove un'iterazione può indicare
+un intero istogramma seguito dal post-processing. Il circuito resta invece compilato con il
+seed fisso `20260819`: cambiare il seed dell'esperimento modifica il campionamento, non il
+circuito confrontato.

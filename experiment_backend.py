@@ -1,0 +1,284 @@
+"""Motore isolato per gli esperimenti della demo Shor v2.
+
+La demo pubblica espone intenzionalmente una sola istanza didattica verificata:
+``N=15, a=7, n_count=8``.  Aer viene eseguito in un sottoprocesso per non portare
+eventuali crash nativi nel worker ASGI e, soprattutto, con ``memory=True``: la sequenza
+degli shot restituita all'interfaccia e' quindi quella reale, non una ricostruzione casuale
+dei conteggi aggregati.
+
+Il modello e' volutamente uniforme e illustrativo.  Non pretende di riprodurre una QPU
+specifica: non include coupling map, routing, drift o calibrazioni per singolo qubit.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import math
+import os
+import subprocess
+import sys
+import traceback
+import uuid
+from typing import Any
+
+import numpy as np
+
+
+N_FIXED = 15
+A_FIXED = 7
+N_COUNT_FIXED = 8
+MAX_SHOTS = 2048
+BASIS_GATES = ["rz", "sx", "x", "cx"]
+SEED_TRANSPILER = 20260819
+GATE_TIME_1Q_NS = 50.0
+GATE_TIME_2Q_NS = 300.0
+LOGGER = logging.getLogger(__name__)
+
+
+class SimulationUnavailable(RuntimeError):
+    """Errore pubblico e deliberatamente privo di dettagli interni del worker."""
+
+
+def noise_is_active(config: dict[str, Any]) -> bool:
+    return any(
+        (
+            float(config.get("eps_1q", 0.0)) > 0,
+            float(config.get("eps_2q", 0.0)) > 0,
+            config.get("t1_us") is not None,
+            float(config.get("readout_0to1", 0.0)) > 0,
+            float(config.get("readout_1to0", 0.0)) > 0,
+            abs(float(config.get("coherent_overrotation_deg", 0.0))) > 0,
+        )
+    )
+
+
+def _compose_errors(errors):
+    combined = None
+    for error in errors:
+        if error is not None:
+            combined = error if combined is None else combined.compose(error)
+    return combined
+
+
+def _rx_error(angle_rad: float):
+    from qiskit_aer.noise import coherent_unitary_error
+
+    half = angle_rad / 2.0
+    unitary = np.array(
+        [[math.cos(half), -1j * math.sin(half)],
+         [-1j * math.sin(half), math.cos(half)]],
+        dtype=complex,
+    )
+    return coherent_unitary_error(unitary)
+
+
+def build_illustrative_noise_model(config: dict[str, Any]):
+    """Costruisce il modello uniforme usato dal laboratorio del rumore.
+
+    Tutto il circuito e' prima decomposto nella base ``rz/sx/x/cx``.  Gli errori 1Q
+    vengono applicati alle porte fisiche ``sx/x`` e quelli 2Q a ogni CX. Le ``rz``
+    sono trattate come aggiornamenti virtuali del frame, quindi senza durata o rumore.
+    Se T1/T2 sono presenti, la durata illustrativa e' 50 ns per ``sx/x`` e 300 ns
+    per una CX. La sovrarotazione 1Q e' modellata come RX(delta) dopo ``sx/x``;
+    non viene inventata una "sovrarotazione CX" equivalente. Il readout usa due
+    probabilita' distinte P(1|0) e P(0|1).
+    """
+    from qiskit_aer.noise import (
+        NoiseModel,
+        ReadoutError,
+        depolarizing_error,
+        thermal_relaxation_error,
+    )
+
+    model = NoiseModel()
+    eps_1q = float(config.get("eps_1q", 0.0))
+    eps_2q = float(config.get("eps_2q", 0.0))
+    overrotation = math.radians(float(config.get("coherent_overrotation_deg", 0.0)))
+
+    thermal_1q = thermal_2q = None
+    if config.get("t1_us") is not None:
+        t1_ns = float(config["t1_us"]) * 1_000.0
+        t2_ns = float(config["t2_us"]) * 1_000.0
+        thermal_1q = thermal_relaxation_error(t1_ns, t2_ns, GATE_TIME_1Q_NS)
+        one_qubit_2q_time = thermal_relaxation_error(t1_ns, t2_ns, GATE_TIME_2Q_NS)
+        thermal_2q = one_qubit_2q_time.tensor(one_qubit_2q_time)
+
+    error_1q = _compose_errors(
+        [
+            depolarizing_error(eps_1q, 1) if eps_1q > 0 else None,
+            thermal_1q,
+            _rx_error(overrotation) if overrotation else None,
+        ]
+    )
+    error_2q = _compose_errors(
+        [
+            depolarizing_error(eps_2q, 2) if eps_2q > 0 else None,
+            thermal_2q,
+        ]
+    )
+    if error_1q is not None:
+        model.add_all_qubit_quantum_error(error_1q, ["sx", "x"])
+    if error_2q is not None:
+        model.add_all_qubit_quantum_error(error_2q, ["cx"])
+
+    p_01 = float(config.get("readout_0to1", 0.0))
+    p_10 = float(config.get("readout_1to0", 0.0))
+    if p_01 > 0 or p_10 > 0:
+        model.add_all_qubit_readout_error(
+            ReadoutError([[1.0 - p_01, p_01], [p_10, 1.0 - p_10]])
+        )
+    return model
+
+
+def _normalise_memory(memory: list[str]) -> list[str]:
+    """Aer puo' separare piu' registri con spazi; qui esiste un solo registro da 8 bit."""
+    clean = []
+    for item in memory:
+        bits = str(item).replace(" ", "")
+        clean.append(bits.zfill(N_COUNT_FIXED)[-N_COUNT_FIXED:])
+    return clean
+
+
+def _circuit_metadata(circuit) -> dict[str, Any]:
+    return {
+        "num_qubits": int(circuit.num_qubits),
+        "num_clbits": int(circuit.num_clbits),
+        "depth": int(circuit.depth()),
+        "size": int(circuit.size()),
+        "gate_counts": {str(k): int(v) for k, v in circuit.count_ops().items()},
+    }
+
+
+def _simulate(payload: dict[str, Any]) -> dict[str, Any]:
+    from qiskit import transpile
+    from qiskit_aer import AerSimulator
+
+    # Import locale: il worker resta autonomo quando viene lanciato per percorso assoluto.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import shor_general as sg
+
+    shots = int(payload["shots"])
+    seed = int(payload["seed"])
+    noise = dict(payload["noise"])
+    active = noise_is_active(noise)
+    # Baseline e campione rumoroso devono essere riproducibili ma statisticamente
+    # indipendenti: usare lo stesso seed in due simulatori con flussi RNG diversi
+    # crea una correlazione opaca e rende scorretto l'IC Newcombe indipendente.
+    noisy_seed = (seed + 1_000_003) % (2 ** 31)
+
+    base = sg.build_circuit(N_FIXED, A_FIXED, N_COUNT_FIXED)
+    # Decomposizione esplicita: nessuna CCX/CP opaca puo' sfuggire a eps_2q.
+    transpiled = transpile(
+        base,
+        basis_gates=BASIS_GATES,
+        optimization_level=2,
+        seed_transpiler=SEED_TRANSPILER,
+    )
+
+    ideal_simulator = AerSimulator(method="matrix_product_state")
+    ideal_result = ideal_simulator.run(
+        transpiled,
+        shots=shots,
+        seed_simulator=seed,
+        memory=True,
+    ).result()
+    ideal_memory = _normalise_memory(ideal_result.get_memory())
+
+    if active:
+        noisy_simulator = AerSimulator(
+            noise_model=build_illustrative_noise_model(noise),
+            method="matrix_product_state",
+        )
+        noisy_result = noisy_simulator.run(
+            transpiled,
+            shots=shots,
+            seed_simulator=noisy_seed,
+            memory=True,
+        ).result()
+        noisy_memory = _normalise_memory(noisy_result.get_memory())
+    else:
+        # Zero rumore significa davvero la stessa baseline, non un secondo campione casuale.
+        noisy_memory = list(ideal_memory)
+
+    return {
+        "ok": True,
+        "ideal_memory": ideal_memory,
+        "noisy_memory": noisy_memory,
+        "simulation_seeds": {
+            "ideal": seed,
+            "noisy": noisy_seed if active else None,
+            "independent_streams": bool(active),
+        },
+        "circuit": {
+            "base": _circuit_metadata(base),
+            "transpiled": _circuit_metadata(transpiled),
+            "basis_gates": list(BASIS_GATES),
+            "seed_transpiler": SEED_TRANSPILER,
+        },
+    }
+
+
+def run_pair_isolated(
+    *, shots: int, seed: int, noise: dict[str, Any], timeout_seconds: float | None = None
+) -> dict[str, Any]:
+    """Esegue baseline e run rumoroso senza propagare stderr/traceback al chiamante."""
+    active = noise_is_active(noise)
+    run_id = uuid.uuid4().hex[:12]
+    if timeout_seconds is None:
+        # Il caso rumoroso usa traiettorie stocastiche e scala con gli shot. Il tetto
+        # pubblico e questo timeout impediscono a un worker guasto di monopolizzare il servizio.
+        timeout_seconds = min(
+            120.0,
+            max(60.0, 30.0 + shots * (0.04 if active else 0.015)),
+        )
+    try:
+        process = subprocess.run(
+            [sys.executable, os.path.abspath(__file__), "--worker"],
+            input=json.dumps({"shots": shots, "seed": seed, "noise": noise}),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        LOGGER.error("Aer worker %s non disponibile: %s", run_id, type(exc).__name__)
+        raise SimulationUnavailable("Simulazione temporaneamente non disponibile.") from exc
+
+    if process.returncode != 0:
+        LOGGER.error(
+            "Aer worker %s terminato con codice %s: %s",
+            run_id,
+            process.returncode,
+            process.stderr[-4000:].strip(),
+        )
+        raise SimulationUnavailable("Simulazione temporaneamente non disponibile.")
+    try:
+        result = json.loads(process.stdout)
+    except (TypeError, json.JSONDecodeError) as exc:
+        LOGGER.error("Aer worker %s ha restituito JSON non valido.", run_id)
+        raise SimulationUnavailable("Simulazione temporaneamente non disponibile.") from exc
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        LOGGER.error("Aer worker %s ha restituito una risposta non valida.", run_id)
+        raise SimulationUnavailable("Simulazione temporaneamente non disponibile.")
+    return result
+
+
+def _worker_main() -> int:
+    try:
+        payload = json.loads(sys.stdin.read())
+        result = _simulate(payload)
+    except Exception:
+        # Il traceback resta nello stderr catturato dal server; non entra mai nel JSON pubblico.
+        traceback.print_exc(file=sys.stderr)
+        print(json.dumps({"ok": False, "error": "simulation_failed"}))
+        return 1
+    print(json.dumps(result, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--worker", action="store_true")
+    args = parser.parse_args()
+    raise SystemExit(_worker_main() if args.worker else 2)
