@@ -1,4 +1,4 @@
-"""Contract tests for the fixed, scientifically validated v2 experiment API."""
+"""Contract tests for the three scientifically validated v3 experiment instances."""
 
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ def _payload(**overrides):
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("N", 21), ("a", 2), ("n_count", 10)],
+    [("a", 2), ("n_count", 10)],
 )
-def test_scientific_instance_is_server_side_and_cannot_be_overridden(
+def test_base_and_count_register_are_server_side_and_cannot_be_overridden(
     field: str, value: int
 ) -> None:
     response = client.post("/api/experiment", json=_payload(**{field: value}))
@@ -29,14 +29,80 @@ def test_scientific_instance_is_server_side_and_cannot_be_overridden(
     assert response.status_code == 422
 
 
-def test_validated_but_costly_instances_are_outside_interactive_endpoints() -> None:
-    factor = client.get("/api/factor", params={"N": 21})
+@pytest.mark.parametrize(
+    ("N", "a", "n_count", "order", "num_qubits", "bloch_ok"),
+    [(15, 7, 8, 4, 12, True), (21, 2, 10, 6, 22, False), (35, 6, 12, 2, 26, False)],
+)
+def test_all_validated_instances_are_exposed_with_server_side_parameters(
+    N: int, a: int, n_count: int, order: int, num_qubits: int, bloch_ok: bool
+) -> None:
+    factor = client.get("/api/factor", params={"N": N})
+
+    assert factor.status_code == 200
+    body = factor.json()
+    assert (body["N"], body["a"], body["n_count"], body["order"]) == (
+        N, a, n_count, order
+    )
+    assert body["num_qubits"] == num_qubits
+    assert body["bloch_ok"] is bloch_ok
+    assert body["validated"] is True
+
+
+def test_large_instance_uses_exact_sample_instead_of_exponential_bloch_view() -> None:
     bloch = client.get(
         "/api/bloch", params={"N": 21, "a": 2, "n_count": 10, "stage": 0}
     )
+    sample = client.get("/api/ideal-sample", params={"N": 21, "seed": 42})
 
-    assert factor.status_code == 400
     assert bloch.status_code == 400
+    assert sample.status_code == 200
+    assert sample.json()["source"] == "exact_finite_register_qpe_law"
+    assert len(sample.json()["measured_shot"]["bits"]) == 10
+
+
+@pytest.mark.parametrize("N", [14, 33, 91])
+def test_non_validated_instances_are_rejected(N: int) -> None:
+    assert client.get("/api/factor", params={"N": N}).status_code == 400
+    assert client.post("/api/experiment", json=_payload(N=N)).status_code == 422
+
+
+@pytest.mark.parametrize("N", [21, 35])
+def test_large_instance_live_budget_is_enforced(N: int) -> None:
+    assert client.post("/api/experiment", json=_payload(N=N, shots=129)).status_code == 422
+
+
+def test_n21_quantum_noise_is_rejected_before_starting_the_costly_worker() -> None:
+    response = client.post(
+        "/api/experiment", json=_payload(N=21, noise={"eps_1q": 0.001})
+    )
+
+    assert response.status_code == 422
+    assert "non e' disponibile live" in response.text
+
+
+def test_n21_readout_noise_remains_live() -> None:
+    response = client.post(
+        "/api/experiment",
+        json=_payload(N=21, noise={"readout_0to1": 0.02, "readout_1to0": 0.02}),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["metadata"]["live_noise_scope"] == "readout_only"
+
+
+def test_n35_coherent_noise_and_oversized_quantum_run_are_rejected_early() -> None:
+    coherent = client.post(
+        "/api/experiment",
+        json=_payload(N=35, noise={"coherent_overrotation_deg": 1.0}),
+    )
+    oversized = client.post(
+        "/api/experiment", json=_payload(N=35, shots=64, noise={"eps_2q": 0.001})
+    )
+
+    assert coherent.status_code == 422
+    assert oversized.status_code == 422
+    assert "sovrarotazione coerente" in coherent.text
+    assert "al massimo 32 shot" in oversized.text
 
 
 def test_costly_legacy_run_endpoint_is_not_public() -> None:
@@ -186,6 +252,29 @@ def test_zero_noise_is_exactly_the_same_sampled_baseline() -> None:
     assert body["metadata"]["simulation_seeds"]["noisy"] is None
 
 
+@pytest.mark.parametrize(
+    ("N", "a", "n_count", "factors"),
+    [(21, 2, 10, [3, 7]), (35, 6, 12, [5, 7])],
+)
+def test_large_validated_instances_execute_live_end_to_end(
+    N: int, a: int, n_count: int, factors: list[int]
+) -> None:
+    response = client.post("/api/experiment", json=_payload(N=N, noise={}))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["schema_version"] == "3.0"
+    assert (body["config"]["N"], body["config"]["a"], body["config"]["n_count"]) == (
+        N, a, n_count
+    )
+    assert len(body["ideal"]["distribution"]) == 2 ** n_count
+    assert body["ideal"]["memory"] == body["noisy"]["memory"]
+    assert body["comparison"]["tvd"] == pytest.approx(0.0)
+    observed = body["ideal"]["factors_found"]
+    if observed is not None:
+        assert sorted(observed) == factors
+
+
 def test_deterministic_readout_flip_uses_an_independent_reproducible_stream() -> None:
     response = client.post(
         "/api/experiment",
@@ -224,7 +313,7 @@ def test_experiment_smoke_returns_complete_and_coherent_factor_results() -> None
     assert body["random_factor_floor"] == pytest.approx(63 / 256)
     assert body["metadata"]["theoretical_peaks"] == [0, 64, 128, 192]
     assert body["metadata"]["useful_peaks"] == [64, 128, 192]
-    assert body["metadata"]["circuit_implementation"] == "n15-a7-textbook-orbit-v2"
+    assert body["metadata"]["circuit_implementation"] == "n15-a7-textbook-orbit-v3"
     assert body["metadata"]["simulation_seeds"]["independent_streams"] is True
     assert body["metadata"]["circuit"]["seed_transpiler"] == 20260819
 

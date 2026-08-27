@@ -21,6 +21,15 @@
       <button class="button button-quiet" id="openGuideBtn" type="button" aria-haspopup="dialog">Come leggere la demo</button>
     </header>
 
+    <section class="instance-switcher" aria-labelledby="instanceSwitcherTitle">
+      <div>
+        <p class="kicker">Istanza dell’algoritmo</p>
+        <h2 id="instanceSwitcherTitle">Cambia numero e osserva cambiare periodo e distribuzione</h2>
+        <p id="instanceSummary">N=15 usa il circuito textbook compatto e consente anche la vista di Bloch.</p>
+      </div>
+      <label for="instanceSelect"><span>Numero da fattorizzare</span><select id="instanceSelect"><option value="15" selected>15 = 3 × 5</option><option value="21">21 = 3 × 7</option><option value="35">35 = 5 × 7</option></select></label>
+    </section>
+
     <nav class="tabs" role="tablist" aria-label="Sezioni della demo">
       <button class="tab is-active" id="idealTab" type="button" role="tab" aria-selected="true" aria-controls="idealPanel" tabindex="0" data-tab="ideal">
         <span class="tab-index">01</span>
@@ -38,7 +47,7 @@
           <span class="notice-icon" aria-hidden="true">◇</span>
           <div>
             <strong>Ideale non significa deterministico.</strong>
-            <p>Con <span class="mono">N=15, a=7</span> la simulazione ideale restituisce un esito utile in circa il <strong>75% dei singoli shot</strong>. La ripetizione è parte dell’algoritmo, non un errore fisico.</p>
+            <p id="idealNoticeText">Con <span class="mono">N=15, a=7</span> la simulazione ideale restituisce un esito utile in circa il <strong>75% dei singoli shot</strong>. La ripetizione è parte dell’algoritmo, non un errore fisico.</p>
           </div>
         </div>
 
@@ -48,10 +57,10 @@
               <p class="kicker">Configurazione validata</p>
               <h2 id="idealControlsTitle">Esplora il circuito, uno stadio alla volta</h2>
             </div>
-            <div class="instance-badges" aria-label="Parametri fissi dell'istanza">
-              <span><small>Numero</small><b>N = 15</b></span>
-              <span><small>Base</small><b>a = 7</b></span>
-              <span><small>Conteggio</small><b>t = 8 qubit</b></span>
+            <div class="instance-badges" aria-label="Parametri validati dell'istanza">
+              <span><small>Numero</small><b id="instanceNBadge">N = 15</b></span>
+              <span><small>Base</small><b id="instanceABadge">a = 7</b></span>
+              <span><small>Conteggio</small><b id="instanceCountBadge">t = 8 qubit</b></span>
             </div>
           </div>
 
@@ -74,7 +83,7 @@
               <div><p class="kicker">Circuito + stato ridotto</p><h2 id="circuitTitle">Dove siamo e come stanno i qubit</h2></div>
               <span class="stage-chip" id="stageChip">Stadio —</span>
             </div>
-            <p class="panel-intro">La linea tratteggiata indica lo stadio corrente. A destra, ogni sfera rappresenta lo stato ridotto di un qubit di conteggio; una freccia corta segnala entanglement.</p>
+            <p class="panel-intro" id="circuitIntro">La linea tratteggiata indica lo stadio corrente. A destra, ogni sfera rappresenta lo stato ridotto di un qubit di conteggio; una freccia corta segnala entanglement.</p>
             <div class="circuit-scroller" tabindex="0" aria-label="Circuito quantistico; scorri orizzontalmente sui display piccoli">
               <svg id="circuitSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img" aria-labelledby="circuitSvgTitle circuitSvgDesc">
                 <title id="circuitSvgTitle">Circuito ideale di Shor per quindici</title>
@@ -99,7 +108,7 @@
               <div><dt>Cosa osservare</dt><dd id="stageObserve">—</dd></div>
               <div><dt>Indice</dt><dd id="stageCounter">—</dd></div>
             </dl>
-            <div class="bloch-note"><strong>Nota sulle sfere</strong><p>Mostrano i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro.</p></div>
+            <div class="bloch-note"><strong id="stateViewNoteTitle">Nota sulle sfere</strong><p id="stateViewNote">Mostrano i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro.</p></div>
           </aside>
         </div>
 
@@ -119,16 +128,16 @@
         </section>
 
         <section class="probability-strip" aria-label="Probabilità teoriche ideali">
-          <article><small>Picchi teorici</small><strong>0 · 64 · 128 · 192</strong><p>Separazione <span class="mono">2⁸ / r = 64</span>, quindi <span class="mono">r=4</span>.</p></article>
-          <article><small>Singolo shot</small><strong>≈ 75%</strong><p>Tre picchi su quattro permettono di estrarre un fattore; <span class="mono">y=0</span> è sterile.</p></article>
-          <article><small>Entro 2 shot</small><strong>≈ 93,75%</strong><p><span class="mono">1 − (1 − 0,75)²</span>: ripetere aumenta rapidamente la probabilità cumulativa.</p></article>
+          <article><small>Picchi teorici</small><strong id="theoreticalPeaks">0 · 64 · 128 · 192</strong><p id="peakExplanation">Separazione <span class="mono">2⁸ / r = 64</span>, quindi <span class="mono">r=4</span>.</p></article>
+          <article><small>Singolo shot</small><strong id="singleShotProbability">≈ 75%</strong><p id="singleShotExplanation">Tre picchi su quattro permettono di estrarre un fattore; <span class="mono">y=0</span> è sterile.</p></article>
+          <article><small>Entro 2 shot</small><strong id="twoShotProbability">≈ 93,75%</strong><p id="twoShotExplanation"><span class="mono">1 − (1 − 0,75)²</span>: ripetere aumenta rapidamente la probabilità cumulativa.</p></article>
         </section>
       </section>
 
       <section class="tab-panel" id="noisePanel" role="tabpanel" aria-labelledby="noiseTab" hidden>
         <div class="notice notice-noise">
           <span class="notice-icon" aria-hidden="true">≋</span>
-          <div><strong>Stessa istanza, confronto controllato.</strong><p>La baseline ideale rimane sempre visibile. Attiva un solo canale per attribuire l’effetto, oppure combinali per simulare un preset NISQ illustrativo.</p></div>
+          <div><strong>Stessa istanza, confronto controllato.</strong><p id="noiseInstanceNotice">La baseline ideale rimane sempre visibile. Attiva un solo canale per attribuire l’effetto, oppure combinali per simulare un preset NISQ illustrativo.</p></div>
         </div>
 
         <section class="panel control-panel" aria-labelledby="noiseControlsTitle">
@@ -136,6 +145,7 @@
             <div><p class="kicker">Configurazione dell’esperimento</p><h2 id="noiseControlsTitle">Costruisci il modello di rumore</h2></div>
             <div class="preset-group" role="group" aria-label="Preset del rumore">
               <button class="preset" type="button" data-preset="none" aria-pressed="false">Rumore off</button>
+              <button class="preset" type="button" data-preset="readout" aria-pressed="false">Solo readout</button>
               <button class="preset is-active" type="button" data-preset="uc1" aria-pressed="true">UC1 moderato</button>
               <button class="preset" type="button" data-preset="uc2" aria-pressed="false">UC2 stress</button>
               <button class="preset" type="button" data-preset="custom" aria-pressed="false">Personalizzato</button>
@@ -145,7 +155,7 @@
           <fieldset id="experimentControls" class="experiment-fieldset">
             <legend class="sr-only">Parametri dell’esperimento rumoroso</legend>
             <div class="run-config">
-              <label>Shot<select id="shotsInput"><option value="128">128</option><option value="256">256</option><option value="512" selected>512</option><option value="1024">1024</option><option value="2048">2048</option></select></label>
+              <label>Shot<select id="shotsInput"><option value="10">10</option><option value="32">32</option><option value="64">64</option><option value="128">128</option><option value="256">256</option><option value="512" selected>512</option><option value="1024">1024</option><option value="2048">2048</option></select></label>
               <label>Seed<input id="seedInput" type="number" min="0" max="2147483647" step="1" value="42" inputmode="numeric"></label>
               <label class="check-control seed-lock"><input id="seedLockInput" type="checkbox" checked><span>Blocca seed</span></label>
               <button class="button button-secondary" id="newRealizationBtn" type="button">Genera nuovo seed</button>
@@ -191,9 +201,9 @@
         <section class="panel results-panel" aria-labelledby="resultsTitle">
           <div class="section-heading">
             <div><p class="kicker">Baseline fissa + confronto riproducibile</p><h2 id="resultsTitle">Quanto cambia l’algoritmo?</h2></div>
-            <div class="random-baseline" title="Successo atteso da una distribuzione uniforme sui 256 bitstring"><small>Baseline casuale</small><strong>24,6%</strong></div>
+            <div class="random-baseline" id="randomBaseline" title="Successo atteso da una distribuzione uniforme"><small>Baseline casuale</small><strong id="randomBaselineValue">24,6%</strong></div>
           </div>
-          <div class="ideal-baseline"><span aria-hidden="true">◎</span><p><strong>Riferimento ideale teorico:</strong> quattro picchi in <span class="mono">0, 64, 128, 192</span>; probabilità di fattorizzazione per shot ≈ <strong>75%</strong>. I campioni usano lo stesso budget e un seed radice riproducibile. Con almeno un canale attivo derivano da stream indipendenti; a rumore zero viene riusato lo stesso campione.</p></div>
+          <div class="ideal-baseline"><span aria-hidden="true">◎</span><p id="idealBaselineText"><strong>Riferimento ideale teorico:</strong> quattro picchi in <span class="mono">0, 64, 128, 192</span>; probabilità di fattorizzazione per shot ≈ <strong>75%</strong>. I campioni usano lo stesso budget e un seed radice riproducibile.</p></div>
           <div id="emptyResults" class="empty-results"><span aria-hidden="true">⌁</span><h3>Nessun esperimento ancora eseguito</h3><p>Scegli un preset o attiva un solo errore, quindi premi “Confronta ideale e rumore”.</p></div>
 
           <div id="experimentResults" hidden>
@@ -208,7 +218,7 @@
 
             <div class="chart-block">
               <div class="chart-header">
-                <div><h3>Distribuzione completa degli esiti</h3><p>Asse fisso 0…255. Le linee verticali segnano i quattro picchi teorici.</p></div>
+                <div><h3>Distribuzione completa degli esiti</h3><p id="chartAxisHelp">Asse 0…255. Le linee verticali segnano i quattro picchi teorici.</p></div>
                 <div class="chart-legend" aria-label="Legenda del grafico"><span><i class="swatch ideal-swatch"></i>Ideale</span><span><i class="swatch noisy-swatch"></i>Rumoroso</span><span><i class="peak-marker"></i>Picco teorico</span></div>
               </div>
               <div class="chart-scroller" tabindex="0" aria-label="Grafico degli esiti; scorri orizzontalmente sui display piccoli">
@@ -226,7 +236,7 @@
       </section>
     </main>
 
-    <footer><p>Demo didattica · istanza compilata e validata <span class="mono">N=15, a=7</span>. I preset descrivono un modello NISQ illustrativo, non una specifica QPU reale.</p></footer>
+    <footer><p>Demo didattica · istanze compilate e validate <span class="mono">N=15, 21, 35</span>. I preset descrivono un modello NISQ illustrativo, non una specifica QPU reale.</p></footer>
   </div>
 
   <dialog id="guideDialog" aria-labelledby="guideTitle" aria-describedby="guideDescription">

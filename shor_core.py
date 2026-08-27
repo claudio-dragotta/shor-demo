@@ -1,7 +1,7 @@
 """Circuiti QPE locali usati dalla demo e dalle regressioni scientifiche.
 
 N=15 usa il moltiplicatore textbook; N=21/35 usano l'aritmetica Beauregard validata. La demo
-web espone soltanto N=15 per mantenere interattivo il costo della simulazione classica.
+web v3 espone tutte e tre le istanze con un limite di shot più stretto per N=21/35.
 """
 import numpy as np
 from math import gcd, ceil, log2

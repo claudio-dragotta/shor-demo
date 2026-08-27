@@ -4,20 +4,42 @@
   const NS = "http://www.w3.org/2000/svg";
   const MAX_SEED = 2147483647;
   const MAX_SHOTS = 2048;
-  const IDEAL = Object.freeze({ N: 15, a: 7, nCount: 8 });
-  const PEAKS = Object.freeze([0, 64, 128, 192]);
+  const INSTANCES = Object.freeze({
+    15: Object.freeze({ N: 15, a: 7, nCount: 8, order: 4, factors: [3, 5], maxShots: 2048, dimension: 256, peaks: [0, 64, 128, 192], usefulPeaks: [64, 128, 192], idealYield: .75, randomFloor: 63 / 256 }),
+    21: Object.freeze({ N: 21, a: 2, nCount: 10, order: 6, factors: [3, 7], maxShots: 128, dimension: 1024, peaks: [0, 171, 341, 512, 683, 853], usefulPeaks: [171, 512, 853], idealYield: .4925507740473057, randomFloor: 283 / 1024 }),
+    35: Object.freeze({ N: 35, a: 6, nCount: 12, order: 2, factors: [5, 7], maxShots: 128, dimension: 4096, peaks: [0, 2048], usefulPeaks: [2048], idealYield: .5, randomFloor: 675 / 4096 }),
+  });
   const $ = (id) => document.getElementById(id);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
   const state = {
+    instance: INSTANCES[15],
     ideal: { info: null, stage: 0, bloch: null, controller: null, requestId: 0, playing: false, timer: null },
     experiment: { controller: null, requestId: 0, running: false, preset: "uc1", hasResult: false },
   };
+
+  function currentInstance() {
+    const info = state.ideal.info;
+    return info ? {
+      ...state.instance,
+      N: Number(info.N), a: Number(info.a), nCount: Number(info.n_count),
+      order: Number(info.order), maxShots: Number(info.max_shots),
+      peaks: Array.from(info.theoretical_peaks || []),
+      usefulPeaks: Array.from(info.useful_peaks || []),
+      idealYield: Number(info.ideal_factor_yield),
+      randomFloor: Number(info.random_factor_floor),
+      dimension: Number(info.dimension),
+    } : state.instance;
+  }
 
   const PRESETS = {
     none: {
       eps_1q: 0, eps_2q: 0, t1_us: 100, t2_us: 80,
       readout_0to1: 0, readout_1to0: 0, coherent_overrotation_deg: 0,
+    },
+    readout: {
+      eps_1q: 0, eps_2q: 0, t1_us: 100, t2_us: 80,
+      readout_0to1: 0.02, readout_1to0: 0.02, coherent_overrotation_deg: 0,
     },
     uc1: {
       eps_1q: 0.001, eps_2q: 0.01, t1_us: 100, t2_us: 80,
@@ -29,7 +51,8 @@
     },
   };
 
-  const PRESET_LABELS = Object.freeze({ none: "Rumore off", uc1: "UC1 moderato", uc2: "UC2 stress", custom: "Personalizzato" });
+  const PRESET_LABELS = Object.freeze({ none: "Rumore off", readout: "Solo readout", uc1: "UC1 moderato", uc2: "UC2 stress", custom: "Personalizzato" });
+  const QUANTUM_NOISE_CHANNELS = Object.freeze(["eps_1q", "eps_2q", "t1_us", "t2_us", "coherent_overrotation_deg"]);
 
   const CHANNELS = {
     eps_1q: { input: "eps1qInput", output: "eps1qOutput", format: percentControl },
@@ -187,13 +210,80 @@
     $("stageSelect").disabled = !ready;
   }
 
+  function updateInstancePresentation() {
+    const instance = currentInstance();
+    const M = instance.dimension || 2 ** instance.nCount;
+    const peaks = instance.peaks || [];
+    const idealYield = Number.isFinite(instance.idealYield) ? instance.idealYield : null;
+    const twoShot = idealYield == null ? null : 1 - (1 - idealYield) ** 2;
+    const blochOk = state.ideal.info?.bloch_ok !== false;
+    $("instanceNBadge").textContent = `N = ${instance.N}`;
+    $("instanceABadge").textContent = `a = ${instance.a}`;
+    $("instanceCountBadge").textContent = `t = ${instance.nCount} qubit`;
+    $("instanceSummary").textContent = blochOk
+      ? `N=${instance.N} usa il circuito textbook compatto: simulazione live e vista esatta dello stato ridotto.`
+      : `N=${instance.N} usa aritmetica Beauregard validata (${state.ideal.info?.num_qubits || "—"} qubit totali): circuito e QPE sono reali, la vista Bloch completa è omessa per il costo esponenziale.`;
+    $("idealNoticeText").innerHTML = `Con <span class="mono">N=${instance.N}, a=${instance.a}</span> la legge QPE ideale estrae i fattori in circa il <strong>${percentMetric(idealYield)}</strong> dei singoli shot. La ripetizione è parte dell’algoritmo, non un errore fisico.`;
+    $("theoreticalPeaks").textContent = peaks.length ? peaks.join(" · ") : "—";
+    const spacing = M / instance.order;
+    $("peakExplanation").innerHTML = `Posizioni vicine ai multipli di <span class="mono">2^${instance.nCount} / r = ${numberIT(spacing, Number.isInteger(spacing) ? 0 : 2)}</span>, con <span class="mono">r=${instance.order}</span>.`;
+    $("singleShotProbability").textContent = idealYield == null ? "—" : `≈ ${percentMetric(idealYield, 2)}`;
+    $("singleShotExplanation").textContent = `Il post-processing verifica ogni esito misurato per ottenere ${instance.factors.join(" e ")}.`;
+    $("twoShotProbability").textContent = twoShot == null ? "—" : `≈ ${percentMetric(twoShot, 2)}`;
+    $("twoShotExplanation").textContent = "Due tentativi indipendenti aumentano la probabilità cumulativa di osservare almeno un esito utile.";
+    $("circuitIntro").textContent = blochOk
+      ? "La linea tratteggiata indica lo stadio corrente. A destra, ogni sfera rappresenta lo stato ridotto di un qubit di conteggio; una freccia corta segnala entanglement."
+      : `La linea tratteggiata indica lo stadio corrente del circuito a ${state.ideal.info?.num_qubits || "—"} qubit. La vista Bloch completa non viene materializzata: richiederebbe uno statevector esponenziale.`;
+    $("stateViewNoteTitle").textContent = blochOk ? "Nota sulle sfere" : "Vista strutturale";
+    $("stateViewNote").textContent = blochOk
+      ? "Mostra i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro."
+      : "Gli stadi, i controlli e la misura restano quelli del circuito validato. L’esito ideale è campionato dalla legge QPE esatta a registro finito.";
+    $("noiseInstanceNotice").textContent = instance.N === 21
+      ? `Il confronto usa il circuito validato per N=21. Ideale e readout sono live; il rumore interno ai gate è disabilitato perché supera il timeout già con 10 shot.`
+      : instance.N === 35
+        ? "Per N=35 depolarizzazione, termico e readout sono live; la sovrarotazione è disabilitata. Con rumore quantistico il limite è 32 shot."
+        : `Il confronto usa lo stesso circuito validato per N=${instance.N}. Limite live: ${instance.maxShots} shot per distribuzione.`;
+    $("randomBaselineValue").textContent = percentMetric(instance.randomFloor);
+    $("randomBaseline").title = `Successo del post-processing su una distribuzione uniforme dei ${M} esiti`;
+    $("idealBaselineText").innerHTML = `<strong>Riferimento ideale teorico per N=${instance.N}:</strong> picchi presso <span class="mono">${peaks.join(", ")}</span>; probabilità teorica di fattorizzazione per shot ≈ <strong>${percentMetric(idealYield, 2)}</strong>. I dati dell’esperimento sono generati live con Qiskit Aer.`;
+    $("chartAxisHelp").textContent = `Asse 0…${M - 1}. Le linee verticali segnano ${peaks.length} picchi teorici.`;
+    resetPipeline();
+    updateShotBudget();
+    updateSnapshot();
+  }
+
+  function updateShotBudget() {
+    const instance = currentInstance();
+    let maximum = instance.maxShots || MAX_SHOTS;
+    if (instance.N === 35) {
+      const quantumActive = QUANTUM_NOISE_CHANNELS.some((key) => {
+        const element = $(CHANNELS[key]?.input);
+        const toggle = element?.closest(".noise-control")?.querySelector(".channel-toggle");
+        return toggle?.checked && Number(element.value) !== 0;
+      });
+      if (quantumActive) maximum = Math.min(maximum, 32);
+    }
+    const select = $("shotsInput");
+    Array.from(select.options).forEach((option) => { option.disabled = Number(option.value) > maximum; });
+    if (Number(select.value) > maximum) select.value = maximum >= 64 ? "64" : String(maximum);
+  }
+
   async function initIdeal() {
-    setStatus("idealStatus", "Preparo il circuito ideale N=15, a=7…", "loading");
+    const instance = state.instance;
+    stopPlayback();
+    state.ideal.info = null;
+    state.ideal.bloch = null;
+    state.ideal.stage = 0;
+    state.ideal.controller?.abort();
+    const requestId = ++state.ideal.requestId;
+    setStatus("idealStatus", `Preparo il circuito ideale N=${instance.N}, a=${instance.a}…`, "loading");
     $("playStageBtn").disabled = true;
     try {
-      const info = await apiJSON("/api/factor?N=15");
-      if (info.done) throw new Error("Il backend ha risolto N=15 nel pre-processing e non ha costruito il circuito.");
-      state.ideal.info = { ...info, a: IDEAL.a, n_count: Number(info.n_count) || IDEAL.nCount };
+      const info = await apiJSON(`/api/factor?N=${instance.N}`);
+      if (requestId !== state.ideal.requestId) return;
+      if (info.done) throw new Error(`Il backend ha risolto N=${instance.N} nel pre-processing e non ha costruito il circuito.`);
+      state.ideal.info = info;
+      updateInstancePresentation();
       const select = $("stageSelect");
       select.replaceChildren(...state.ideal.info.stages.map((stage, index) => {
         const option = document.createElement("option");
@@ -217,10 +307,28 @@
     const controller = new AbortController();
     state.ideal.controller = controller;
     setIdealBusy(true);
-    setStatus("idealStatus", `Calcolo dello stato ridotto · ${info.stages[target].label}…`, "loading");
+    setStatus("idealStatus", `${info.bloch_ok ? "Calcolo dello stato ridotto" : "Preparo lo stadio del circuito"} · ${info.stages[target].label}…`, "loading");
     try {
-      const query = new URLSearchParams({ N: String(IDEAL.N), a: String(IDEAL.a), n_count: String(info.n_count), stage: String(target) });
-      const bloch = await apiJSON(`/api/bloch?${query}`, { signal: controller.signal });
+      let bloch;
+      if (info.bloch_ok) {
+        const query = new URLSearchParams({ N: String(info.N), a: String(info.a), n_count: String(info.n_count), stage: String(target) });
+        bloch = await apiJSON(`/api/bloch?${query}`, { signal: controller.signal });
+      } else {
+        const stage = info.stages[target];
+        let measuredShot = null;
+        let measurementSeed = null;
+        if (stage.kind === "measure") {
+          const sample = await apiJSON(`/api/ideal-sample?N=${info.N}`, { signal: controller.signal });
+          measuredShot = sample.measured_shot;
+          measurementSeed = sample.seed;
+        }
+        bloch = {
+          stage: target, n_stages: info.stages.length, label: stage.label,
+          kind: stage.kind, control: stage.control, n_count: info.n_count,
+          num_qubits: info.num_qubits, qubits: [], measured_shot: measuredShot,
+          measurement_seed: measurementSeed, structural_view: true,
+        };
+      }
       if (requestId !== state.ideal.requestId) return;
       state.ideal.stage = target;
       state.ideal.bloch = bloch;
@@ -229,7 +337,8 @@
       renderStageExplanation(info.stages[target], target, info.stages.length);
       if (bloch.kind === "measure" && bloch.measured_shot) renderPipeline(bloch.measured_shot);
       else resetPipeline();
-      setStatus("idealStatus", `Stadio ${target + 1} di ${info.stages.length}: ${bloch.label || info.stages[target].label}.`, "success");
+      const source = info.bloch_ok ? "stato ridotto esatto" : "vista strutturale; misura dalla legge QPE esatta";
+      setStatus("idealStatus", `Stadio ${target + 1} di ${info.stages.length}: ${bloch.label || info.stages[target].label} · ${source}.`, "success");
     } catch (error) {
       if (error.name !== "AbortError" && requestId === state.ideal.requestId) setStatus("idealStatus", `Impossibile calcolare lo stadio: ${errorMessage(error)}`, "error");
     } finally {
@@ -238,7 +347,21 @@
   }
 
   function renderStageExplanation(stage, index, count) {
-    const copy = STAGE_COPY[stage.kind] || STAGE_COPY.init0;
+    const instance = currentInstance();
+    const copy = { ...(STAGE_COPY[stage.kind] || STAGE_COPY.init0) };
+    if (stage.kind === "init") {
+      copy.text = `Gli Hadamard creano una sovrapposizione uniforme sui ${instance.nCount} qubit di conteggio; il registro di lavoro viene posto in |1⟩.`;
+      copy.operation = `H⊗${instance.nCount} sul conteggio, X sul lavoro`;
+    } else if (stage.kind === "u") {
+      copy.text = `Il controllo applica una potenza di Uₐ al registro di lavoro. La periodicità di ${instance.a}ˣ mod ${instance.N} viene codificata nelle fasi.`;
+    } else if (stage.kind === "qft") {
+      copy.text = `La QFT⁻¹ converte l’informazione dell’ordine r=${instance.order} nei picchi misurabili della distribuzione.`;
+      copy.observe = `Le ampiezze si concentrano presso ${instance.peaks.join(", ")}.`;
+    } else if (stage.kind === "measure") {
+      copy.text = `I ${instance.nCount} qubit di conteggio producono un bitstring; y alimenta frazioni continue e MCD.`;
+      copy.operation = `Misura c₀…c${instance.nCount - 1}`;
+      copy.observe = `✓ indica un esito che estrae ${instance.factors.join(" e ")}; × uno shot non risolutivo.`;
+    }
     $("stageExplanationTitle").textContent = copy.title;
     $("stageExplanation").textContent = copy.text;
     $("stageOperation").textContent = stage.label || copy.operation;
@@ -281,10 +404,11 @@
 
   function renderCircuit(info, bloch) {
     const svg = $("circuitSvg");
+    const instance = currentInstance();
     clearSvg(
       svg,
-      "Circuito ideale di Shor per N uguale a 15",
-      bloch ? `Stadio ${bloch.stage + 1}: ${bloch.label}. A destra sono rappresentati gli stati ridotti degli otto qubit di conteggio.` : "Circuito non disponibile.",
+      `Circuito ideale di Shor per N uguale a ${instance.N}`,
+      bloch ? `Stadio ${bloch.stage + 1}: ${bloch.label}. ${info?.bloch_ok ? `A destra sono rappresentati gli stati ridotti dei ${instance.nCount} qubit di conteggio.` : `Vista strutturale del circuito validato a ${info?.num_qubits} qubit.`}` : "Circuito non disponibile.",
     );
     if (!info) {
       svg.append(svgNode("text", { x: 540, y: 290, fill: "var(--red)", "text-anchor": "middle", "font-size": 16 }, "Circuito non disponibile"));
@@ -292,31 +416,32 @@
     }
 
     const stages = info.stages || [];
-    const nCount = Number(info.n_count) || IDEAL.nCount;
+    const nCount = Number(info.n_count) || instance.nCount;
+    const showBloch = info.bloch_ok !== false;
     const width = 1080;
     const top = 66;
     const row = 57;
     const workY = top + nCount * row + 30;
     const height = workY + 54;
     const wireStart = 62;
-    const wireEnd = 790;
+    const wireEnd = showBloch ? 790 : 1020;
     const sphereX = 984;
     const radius = 18;
     const stageStart = 105;
-    const stageEnd = 735;
+    const stageEnd = showBloch ? 735 : 960;
     const stageX = (index) => stages.length < 2 ? stageStart : stageStart + index * (stageEnd - stageStart) / (stages.length - 1);
     const yOf = (index) => top + index * row;
     const current = bloch ? Number(bloch.stage) : state.ideal.stage;
 
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.append(svgNode("text", { x: 25, y: 28, class: "c-register" }, "REGISTRO DI CONTEGGIO"));
-    svg.append(svgNode("text", { x: sphereX, y: 28, class: "c-state-label" }, "STATO RIDOTTO"));
+    svg.append(svgNode("text", { x: sphereX, y: 28, class: "c-state-label" }, showBloch ? "STATO RIDOTTO" : `${info.num_qubits} QUBIT TOTALI · VISTA STRUTTURALE`));
 
     for (let i = 0; i < nCount; i += 1) {
       const y = yOf(i);
       svg.append(svgNode("text", { x: 26, y: y + 4, class: "c-label" }, `c${i}`));
       svg.append(svgNode("line", { x1: wireStart, y1: y, x2: wireEnd, y2: y, class: "c-wire" }));
-      svg.append(svgNode("line", { x1: wireEnd, y1: y, x2: sphereX - radius - 8, y2: y, class: "c-wire", "stroke-dasharray": "2 5" }));
+      if (showBloch) svg.append(svgNode("line", { x1: wireEnd, y1: y, x2: sphereX - radius - 8, y2: y, class: "c-wire", "stroke-dasharray": "2 5" }));
     }
     svg.append(svgNode("text", { x: 26, y: workY + 4, class: "c-label" }, "w"));
     svg.append(svgNode("line", { x1: wireStart, y1: workY, x2: wireEnd, y2: workY, class: "c-wire c-wire-work" }));
@@ -357,7 +482,7 @@
     svg.append(svgNode("line", { x1: playX, y1: 37, x2: playX, y2: height - 29, class: "c-playhead" }));
     svg.append(svgNode("text", { x: playX, y: 48, class: "c-play-label" }, "▼ ORA"));
 
-    for (let i = 0; i < nCount; i += 1) {
+    if (showBloch) for (let i = 0; i < nCount; i += 1) {
       const y = yOf(i);
       const q = bloch?.qubits?.[i];
       const group = svgNode("g", {});
@@ -410,40 +535,43 @@
   }
 
   function resetPipeline() {
+    const instance = currentInstance();
     $("pipelineResult").className = "result-badge";
     $("pipelineResult").textContent = "In attesa della misura";
     $("mathPipeline").innerHTML = `
-      <li><span>1</span><small>Misura</small><strong>y = —</strong><p>Esito sugli 8 bit classici.</p></li>
-      <li><span>2</span><small>Fase</small><strong>y / 2⁸ = —</strong><p>Stima della fase periodica.</p></li>
+      <li><span>1</span><small>Misura</small><strong>y = —</strong><p>Esito sui ${instance.nCount} bit classici.</p></li>
+      <li><span>2</span><small>Fase</small><strong>y / 2^${instance.nCount} = —</strong><p>Stima della fase periodica.</p></li>
       <li><span>3</span><small>Frazione continua</small><strong>≈ s / r</strong><p>Il denominatore propone l’ordine.</p></li>
       <li><span>4</span><small>Ordine candidato</small><strong>r = —</strong><p>Deve essere pari e verificabile.</p></li>
-      <li><span>5</span><small>MCD</small><strong>gcd(7ʳᐟ² ± 1, 15)</strong><p>Estrae eventuali divisori non banali.</p></li>`;
+      <li><span>5</span><small>MCD</small><strong>gcd(${instance.a}ʳᐟ² ± 1, ${instance.N})</strong><p>Estrae eventuali divisori non banali.</p></li>`;
   }
 
   function renderPipeline(shot) {
-    const y = clamp(Math.trunc(Number(shot.value) || 0), 0, 255);
-    const phase = y / 256;
-    const fraction = closestFraction(phase, IDEAL.N);
+    const instance = currentInstance();
+    const dimension = instance.dimension || 2 ** instance.nCount;
+    const y = clamp(Math.trunc(Number(shot.value) || 0), 0, dimension - 1);
+    const phase = y / dimension;
+    const fraction = closestFraction(phase, instance.N);
     const r = fraction.denominator;
     const even = r % 2 === 0;
-    const verified = even && modPow(IDEAL.a, r, IDEAL.N) === 1;
-    const halfPower = even ? IDEAL.a ** (r / 2) : null;
-    const gMinus = even ? gcd(halfPower - 1, IDEAL.N) : null;
-    const gPlus = even ? gcd(halfPower + 1, IDEAL.N) : null;
-    const computedFactors = [gMinus, gPlus].filter((v) => v != null && v > 1 && v < IDEAL.N);
+    const verified = even && modPow(instance.a, r, instance.N) === 1;
+    const halfPower = even ? instance.a ** (r / 2) : null;
+    const gMinus = even ? gcd(halfPower - 1, instance.N) : null;
+    const gPlus = even ? gcd(halfPower + 1, instance.N) : null;
+    const computedFactors = [gMinus, gPlus].filter((v) => v != null && v > 1 && v < instance.N);
     const success = Boolean(shot.ok) || computedFactors.length > 0;
     const factorA = Number(shot.p) || computedFactors[0] || null;
-    const factorB = Number(shot.q) || (factorA ? IDEAL.N / factorA : null);
+    const factorB = Number(shot.q) || (factorA ? instance.N / factorA : null);
     const result = $("pipelineResult");
     result.className = `result-badge ${success ? "is-success" : "is-failure"}`;
-    result.textContent = success ? `✓ ${IDEAL.N} = ${factorA} × ${factorB}` : "× Shot non risolutivo";
+    result.textContent = success ? `✓ ${instance.N} = ${factorA} × ${factorB}` : "× Shot non risolutivo";
     const orderText = verified ? "ordine verificato" : (even ? "candidato parziale" : "denominatore dispari");
-    const gcdText = even ? `gcd(${halfPower}−1,15)=${gMinus}; gcd(${halfPower}+1,15)=${gPlus}` : "r dispari: MCD non applicabili";
+    const gcdText = even ? `gcd(${halfPower}−1,${instance.N})=${gMinus}; gcd(${halfPower}+1,${instance.N})=${gPlus}` : "r dispari: MCD non applicabili";
     $("mathPipeline").innerHTML = `
-      <li class="${success ? "is-success" : "is-failure"}"><span>1</span><small>Misura</small><strong>y = ${y}</strong><p>Bitstring ${String(shot.bits || y.toString(2).padStart(8, "0"))}.</p></li>
-      <li><span>2</span><small>Fase</small><strong>${y} / 256 = ${numberIT(phase, 4)}</strong><p>Stima prodotta dalla QFT⁻¹.</p></li>
-      <li><span>3</span><small>Frazione continua</small><strong>≈ ${fraction.numerator} / ${fraction.denominator}</strong><p>Denominatore limitato a N=15.</p></li>
-      <li class="${verified ? "is-success" : ""}"><span>4</span><small>Ordine candidato</small><strong>r = ${r}</strong><p>${orderText}; 7ʳ mod 15 = ${modPow(IDEAL.a, r, IDEAL.N)}.</p></li>
+      <li class="${success ? "is-success" : "is-failure"}"><span>1</span><small>Misura</small><strong>y = ${y}</strong><p>Bitstring ${String(shot.bits || y.toString(2).padStart(instance.nCount, "0"))}.</p></li>
+      <li><span>2</span><small>Fase</small><strong>${y} / ${dimension} = ${numberIT(phase, 4)}</strong><p>Stima prodotta dalla QFT⁻¹.</p></li>
+      <li><span>3</span><small>Frazione continua</small><strong>≈ ${fraction.numerator} / ${fraction.denominator}</strong><p>Denominatore limitato a N=${instance.N}.</p></li>
+      <li class="${verified ? "is-success" : ""}"><span>4</span><small>Ordine candidato</small><strong>r = ${r}</strong><p>${orderText}; ${instance.a}ʳ mod ${instance.N} = ${modPow(instance.a, r, instance.N)}.</p></li>
       <li class="${success ? "is-success" : "is-failure"}"><span>5</span><small>MCD</small><strong>${gcdText}</strong><p>${success ? `Divisori non banali: ${factorA} e ${factorB}.` : "Ripetere lo shot è parte dell’algoritmo."}</p></li>`;
   }
 
@@ -470,11 +598,22 @@
     constrainThermalTimes();
     Object.keys(CHANNELS).forEach((key) => {
       const { config, input, output, article, toggle } = channelElements(key);
-      input.disabled = !toggle.checked;
+      const restricted = (state.instance.N === 21 && QUANTUM_NOISE_CHANNELS.includes(key))
+        || (state.instance.N === 35 && key === "coherent_overrotation_deg");
+      if (restricted) toggle.checked = false;
+      toggle.disabled = restricted;
+      input.disabled = restricted || !toggle.checked;
       article.classList.toggle("is-off", !toggle.checked);
+      article.classList.toggle("is-restricted", restricted);
       output.textContent = config.format(input.value);
     });
+    $$(".preset").forEach((button) => {
+      const unavailable = state.instance.N === 21 && ["uc1", "uc2"].includes(button.dataset.preset);
+      button.disabled = state.experiment.running || unavailable;
+      button.title = unavailable ? "Per N=21 il rumore di gate supera il budget live; usa Solo readout." : "";
+    });
     $("newRealizationBtn").disabled = $("seedLockInput").checked;
+    updateShotBudget();
     updateSnapshot();
   }
 
@@ -499,9 +638,10 @@
     Object.entries(PRESETS[name]).forEach(([key, value]) => {
       const { input, toggle } = channelElements(key);
       input.value = String(value);
-      toggle.checked = name !== "none" && key !== "coherent_overrotation_deg";
+      toggle.checked = name !== "none" && key !== "coherent_overrotation_deg"
+        && (name !== "readout" || key.startsWith("readout_"));
     });
-    setThermalEnabled(name !== "none");
+    setThermalEnabled(name === "uc1" || name === "uc2");
     $$(".preset").forEach((button) => {
       const active = button.dataset.preset === name;
       button.classList.toggle("is-active", active);
@@ -538,8 +678,10 @@
   }
 
   function configSnapshot() {
+    const instance = currentInstance();
     return {
-      shots: clamp(Math.trunc(Number($("shotsInput").value)) || 512, 10, MAX_SHOTS),
+      N: instance.N,
+      shots: clamp(Math.trunc(Number($("shotsInput").value)) || 512, 10, instance.maxShots || MAX_SHOTS),
       seed: normalizedSeed(),
       noise: collectNoise(),
       preset: state.experiment.preset,
@@ -550,12 +692,13 @@
     const config = snapshot || configSnapshot();
     const active = Object.entries(config.noise).filter(([, value]) => value != null && Number(value) !== 0).map(([key]) => key);
     const label = PRESET_LABELS[config.preset] || "Personalizzato";
-    $("configSnapshot").textContent = `${running ? "Esecuzione congelata" : "Configurazione pronta"}: ${label} · ${config.shots} shot · seed ${config.seed}${$("seedLockInput").checked ? " bloccato" : " modificabile"} · ${active.length ? `${active.length} parametri di rumore attivi` : "nessun rumore"}.`;
+    $("configSnapshot").textContent = `${running ? "Esecuzione congelata" : "Configurazione pronta"}: N=${config.N} · ${label} · ${config.shots} shot · seed ${config.seed}${$("seedLockInput").checked ? " bloccato" : " modificabile"} · ${active.length ? `${active.length} parametri di rumore attivi` : "nessun rumore"}.`;
   }
 
   function setExperimentBusy(busy) {
     state.experiment.running = busy;
     $("experimentControls").disabled = busy;
+    $("instanceSelect").disabled = busy;
     $$(".preset").forEach((button) => { button.disabled = busy; });
     if (!busy) refreshNoiseUI();
   }
@@ -609,12 +752,12 @@
     state.experiment.controller = controller;
     setExperimentBusy(true);
     updateSnapshot(snapshot, true);
-    setStatus("experimentStatus", `Simulo ${snapshot.shots} shot ideali e ${snapshot.shots} rumorosi con seed ${snapshot.seed}…`, "loading");
+    setStatus("experimentStatus", `Simulo N=${snapshot.N}: ${snapshot.shots} shot ideali e ${snapshot.shots} rumorosi con seed ${snapshot.seed}…`, "loading");
     try {
       const response = await apiJSON("/api/experiment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shots: snapshot.shots, seed: snapshot.seed, noise: snapshot.noise }),
+        body: JSON.stringify({ N: snapshot.N, shots: snapshot.shots, seed: snapshot.seed, noise: snapshot.noise }),
         signal: controller.signal,
       });
       if (requestId !== state.experiment.requestId) return;
@@ -649,16 +792,16 @@
     return String(value);
   }
 
-  function normalizeDistribution(distribution, shots) {
-    const bins = Array.from({ length: 256 }, (_, value) => ({ value, probability: 0, count: 0, ok: false, peak: PEAKS.includes(value) }));
+  function normalizeDistribution(distribution, shots, dimension, peaks) {
+    const bins = Array.from({ length: dimension }, (_, value) => ({ value, probability: 0, count: 0, ok: false, peak: peaks.includes(value) }));
     (Array.isArray(distribution) ? distribution : []).forEach((item) => {
       let value = Number(item.value);
       if (!Number.isFinite(value) && typeof item.value === "string") value = parseInt(item.value, 2);
       value = Math.trunc(value);
-      if (value < 0 || value > 255) return;
+      if (value < 0 || value >= dimension) return;
       const count = Number(item.count) || 0;
       const probability = Number.isFinite(Number(item.probability)) ? Number(item.probability) : count / Math.max(1, shots);
-      bins[value] = { value, count, probability, ok: Boolean(item.ok ?? item.factor_success), peak: Boolean(item.peak ?? item.theoretical_peak) || PEAKS.includes(value) };
+      bins[value] = { value, count, probability, ok: Boolean(item.ok ?? item.factor_success), peak: Boolean(item.peak ?? item.theoretical_peak) || peaks.includes(value) };
     });
     return bins;
   }
@@ -701,13 +844,18 @@
     $("noisyFactors").textContent = formatFactors(noisy.factors_found);
 
     const shots = Number(response.shots ?? response.config?.shots) || snapshot.shots;
-    const idealBins = normalizeDistribution(ideal.distribution, shots);
-    const noisyBins = normalizeDistribution(noisy.distribution, shots);
-    renderDistributionChart(idealBins, noisyBins, shots);
+    const nCount = Number(response.config?.n_count) || currentInstance().nCount;
+    const dimension = 2 ** nCount;
+    const peaks = Array.from(response.metadata?.theoretical_peaks || currentInstance().peaks || []);
+    const randomFloor = Number(response.random_factor_floor);
+    if (Number.isFinite(randomFloor)) $("randomBaselineValue").textContent = percentMetric(randomFloor);
+    const idealBins = normalizeDistribution(ideal.distribution, shots, dimension, peaks);
+    const noisyBins = normalizeDistribution(noisy.distribution, shots, dimension, peaks);
+    renderDistributionChart(idealBins, noisyBins, shots, dimension, peaks);
     renderIterations(noisy.iterations || []);
   }
 
-  function renderDistributionChart(ideal, noisy, shots) {
+  function renderDistributionChart(ideal, noisy, shots, dimension, peaks) {
     const svg = $("distributionChart");
     const width = 1120;
     const height = 390;
@@ -716,14 +864,15 @@
     const plotHeight = height - margin.top - margin.bottom;
     const maxProbability = Math.max(.01, ...ideal.map((bin) => bin.probability), ...noisy.map((bin) => bin.probability));
     const yMax = Math.ceil(maxProbability * 1.12 * 100) / 100;
-    const x = (value) => margin.left + (value / 255) * plotWidth;
+    const maxValue = dimension - 1;
+    const x = (value) => margin.left + (value / maxValue) * plotWidth;
     const y = (probability) => margin.top + plotHeight - (probability / yMax) * plotHeight;
-    const barGroupWidth = plotWidth / 256;
+    const barGroupWidth = plotWidth / dimension;
     const barWidth = Math.max(1.25, barGroupWidth * .38);
     const topIdeal = [...ideal].sort((a, b) => b.probability - a.probability).slice(0, 4).map((bin) => bin.value);
     const topNoisy = [...noisy].sort((a, b) => b.probability - a.probability).slice(0, 4).map((bin) => bin.value);
     const summary = `Con ${shots} shot per distribuzione, i quattro esiti più probabili sono ${topIdeal.join(", ")} nell’ideale e ${topNoisy.join(", ")} nel caso rumoroso.`;
-    clearSvg(svg, "Distribuzioni ideale e rumorosa su tutti i 256 esiti", `${summary} Le linee tratteggiate indicano i picchi teorici 0, 64, 128 e 192.`);
+    clearSvg(svg, `Distribuzioni ideale e rumorosa su tutti i ${dimension} esiti`, `${summary} Le linee tratteggiate indicano i picchi teorici ${peaks.join(", ")}.`);
 
     for (let i = 0; i <= 4; i += 1) {
       const probability = (yMax * i) / 4;
@@ -732,7 +881,7 @@
       svg.append(svgNode("text", { x: margin.left - 10, y: yy + 4, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "end" }, `${numberIT(probability * 100, probability < .1 ? 1 : 0)}%`));
     }
 
-    PEAKS.forEach((peak) => {
+    peaks.forEach((peak) => {
       const xx = x(peak);
       svg.append(svgNode("line", { x1: xx, y1: margin.top - 7, x2: xx, y2: margin.top + plotHeight, stroke: "var(--cyan)", "stroke-width": 1.3, "stroke-dasharray": "4 5", opacity: .75 }));
       svg.append(svgNode("text", { x: xx + (peak === 0 ? 4 : 0), y: 17, fill: "var(--cyan)", "font-size": 9, "font-family": "var(--mono)", "text-anchor": peak === 0 ? "start" : "middle" }, `picco ${peak}`));
@@ -755,12 +904,12 @@
       svg.append(rect);
     });
 
-    [0, 32, 64, 96, 128, 160, 192, 224, 255].forEach((tick) => {
+    Array.from(new Set(Array.from({ length: 9 }, (_, index) => Math.round(index * maxValue / 8)))).forEach((tick) => {
       const xx = x(tick);
       svg.append(svgNode("line", { x1: xx, y1: margin.top + plotHeight, x2: xx, y2: margin.top + plotHeight + 5, stroke: "var(--dim)" }));
-      svg.append(svgNode("text", { x: xx, y: height - 27, fill: "var(--muted)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": tick === 0 ? "start" : tick === 255 ? "end" : "middle" }, tick));
+      svg.append(svgNode("text", { x: xx, y: height - 27, fill: "var(--muted)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": tick === 0 ? "start" : tick === maxValue ? "end" : "middle" }, tick));
     });
-    svg.append(svgNode("text", { x: margin.left + plotWidth / 2, y: height - 6, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "middle" }, "esito misurato y (0…255)"));
+    svg.append(svgNode("text", { x: margin.left + plotWidth / 2, y: height - 6, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "middle" }, `esito misurato y (0…${maxValue})`));
     $("chartSummary").textContent = summary;
   }
 
@@ -797,12 +946,36 @@
     $("stageSelect").addEventListener("change", (event) => { stopPlayback(); loadStage(Number(event.target.value)); });
   }
 
+  function setupInstanceControl() {
+    $("instanceSelect").addEventListener("change", (event) => {
+      const next = INSTANCES[Number(event.target.value)];
+      if (!next || next.N === state.instance.N) return;
+      stopPlayback();
+      state.ideal.controller?.abort();
+      state.experiment.controller?.abort();
+      state.experiment.requestId += 1;
+      state.experiment.hasResult = false;
+      state.instance = next;
+      state.ideal.info = null;
+      $("emptyResults").hidden = false;
+      $("experimentResults").hidden = true;
+      $("chartSummary").textContent = "Nessun dato disponibile per la nuova istanza.";
+      updateInstancePresentation();
+      if (next.N === 21) applyPreset("readout");
+      else refreshNoiseUI();
+      setStatus("experimentStatus", `Istanza N=${next.N} selezionata. Avvia il confronto per generare nuovi dati.`);
+      initIdeal();
+    });
+  }
+
   function init() {
     setupTabs();
     setupDialog();
     setupIdealControls();
     setupNoiseControls();
+    setupInstanceControl();
     resetPipeline();
+    updateInstancePresentation();
     initIdeal();
   }
 

@@ -12,13 +12,18 @@ Deploy (Render / Docker): CMD uvicorn server:app --host 0.0.0.0 --port $PORT
 """
 import os
 from threading import BoundedSemaphore
+from typing import Literal
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import api_backend as api
-from experiment_backend import MAX_SHOTS, SimulationUnavailable
+from experiment_backend import (
+    MAX_SHOTS,
+    SimulationUnavailable,
+    validate_live_experiment,
+)
 
 app = FastAPI(title="Demo Shor — tesi", docs_url="/api/docs")
 
@@ -48,13 +53,19 @@ class NoiseConfig(BaseModel):
 
 
 class ExperimentRequest(BaseModel):
-    """La configurazione algoritmica non e' un input: resta fissata a N=15/a=7/8 qubit."""
+    """Il client sceglie N; base e dimensione restano configurazioni server-side validate."""
 
     model_config = ConfigDict(extra="forbid")
 
-    shots: int = Field(512, ge=10, le=MAX_SHOTS, strict=True)
+    N: Literal[15, 21, 35] = 15
+    shots: int = Field(128, ge=10, le=MAX_SHOTS, strict=True)
     seed: int | None = Field(None, ge=0, le=2 ** 31 - 1, strict=True)
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
+
+    @model_validator(mode="after")
+    def validate_instance_budget(self):
+        validate_live_experiment(self.N, self.shots, self.noise.model_dump())
+        return self
 
 
 @app.middleware("http")
@@ -106,12 +117,25 @@ def api_bloch(N: int = Query(..., ge=2), a: int = Query(...), n_count: int = Que
         raise HTTPException(status_code=500, detail="Vista di Bloch temporaneamente non disponibile.")
 
 
+@app.get("/api/ideal-sample")
+def api_ideal_sample(
+    N: int = Query(..., ge=2),
+    seed: int | None = Query(None, ge=0, le=2 ** 31 - 1),
+):
+    """Misura ideale scalabile per le istanze la cui vista Bloch sarebbe troppo grande."""
+    try:
+        return api.ideal_sample(N, seed=seed)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.post("/api/experiment")
 def api_experiment(request: ExperimentRequest):
     """Confronta la baseline ideale con lo stesso circuito sotto i canali scelti."""
     try:
         return _with_simulation_slot(
             lambda: api.run_experiment(
+                N=request.N,
                 shots=request.shots,
                 seed=request.seed,
                 noise=request.noise.model_dump(),

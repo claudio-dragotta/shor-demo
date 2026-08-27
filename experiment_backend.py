@@ -31,6 +31,7 @@ A_FIXED = 7
 N_COUNT_FIXED = 8
 MAX_SHOTS = 2048
 LARGE_INSTANCE_MAX_SHOTS = 128
+LARGE_QUANTUM_NOISE_MAX_SHOTS = 32
 INSTANCE_CONFIGS = {
     15: {
         "N": 15, "a": 7, "n_count": 8, "order": 4,
@@ -76,6 +77,43 @@ def noise_is_active(config: dict[str, Any]) -> bool:
             abs(float(config.get("coherent_overrotation_deg", 0.0))) > 0,
         )
     )
+
+
+def quantum_noise_is_active(config: dict[str, Any]) -> bool:
+    """Esclude il readout, che non aumenta il costo dell'evoluzione quantistica."""
+    return any(
+        (
+            float(config.get("eps_1q", 0.0)) > 0,
+            float(config.get("eps_2q", 0.0)) > 0,
+            config.get("t1_us") is not None,
+            abs(float(config.get("coherent_overrotation_deg", 0.0))) > 0,
+        )
+    )
+
+
+def validate_live_experiment(N: int, shots: int, noise: dict[str, Any]) -> dict[str, Any]:
+    """Applica i limiti misurati prima di creare un processo Aer costoso."""
+    instance = instance_config(N)
+    if type(shots) is not int or shots < 1 or shots > instance["max_shots"]:
+        raise ValueError(
+            f"shots deve essere un intero tra 1 e {instance['max_shots']} per N={N}."
+        )
+    if N == 21 and quantum_noise_is_active(noise):
+        raise ValueError(
+            "Per N=21 il rumore interno ai gate non e' disponibile live: il circuito "
+            "Beauregard supera il budget interattivo. Usa rumore off/readout oppure N=15/35."
+        )
+    if N == 35 and abs(float(noise.get("coherent_overrotation_deg", 0.0))) > 0:
+        raise ValueError(
+            "Per N=35 la sovrarotazione coerente non e' disponibile live: supera il budget "
+            "interattivo. Usa N=15 oppure un altro canale di rumore."
+        )
+    if N == 35 and quantum_noise_is_active(noise) and shots > LARGE_QUANTUM_NOISE_MAX_SHOTS:
+        raise ValueError(
+            f"Per N=35 con rumore quantistico sono ammessi al massimo "
+            f"{LARGE_QUANTUM_NOISE_MAX_SHOTS} shot."
+        )
+    return instance
 
 
 def _compose_errors(errors):
@@ -190,10 +228,7 @@ def _simulate(payload: dict[str, Any]) -> dict[str, Any]:
     N = instance["N"]
     a = instance["a"]
     n_count = instance["n_count"]
-    if shots > instance["max_shots"]:
-        raise ValueError(
-            f"Per N={N} il massimo e' {instance['max_shots']} shot per esecuzione."
-        )
+    validate_live_experiment(N, shots, noise)
     active = noise_is_active(noise)
     # Baseline e campione rumoroso devono essere riproducibili ma statisticamente
     # indipendenti: usare lo stesso seed in due simulatori con flussi RNG diversi
@@ -258,11 +293,7 @@ def run_pair_isolated(
 ) -> dict[str, Any]:
     """Esegue baseline e run rumoroso senza propagare stderr/traceback al chiamante."""
     active = noise_is_active(noise)
-    instance = instance_config(N)
-    if type(shots) is not int or shots < 1 or shots > instance["max_shots"]:
-        raise ValueError(
-            f"shots deve essere un intero tra 1 e {instance['max_shots']} per N={N}."
-        )
+    instance = validate_live_experiment(N, shots, noise)
     run_id = uuid.uuid4().hex[:12]
     if timeout_seconds is None:
         # Il caso rumoroso usa traiettorie stocastiche e scala con gli shot. Il tetto

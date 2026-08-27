@@ -26,13 +26,10 @@ import numpy as np
 import shor_general as sg
 from shor_general import extract_factors  # importato in shor_general da shor_core
 from experiment_backend import (
-    A_FIXED,
     GATE_TIME_1Q_NS,
     GATE_TIME_2Q_NS,
     MAX_SHOTS,
-    N_COUNT_FIXED,
     N_FIXED,
-    INSTANCE_CONFIGS,
     SimulationUnavailable,
     instance_config,
     run_pair_isolated,
@@ -71,9 +68,6 @@ NOISE_PRESETS = {
         "readout_1to0": 0.05,
     },
 }
-
-THEORETICAL_PEAKS = (0, 64, 128, 192)
-USEFUL_PEAKS = (64, 128, 192)
 
 # Tetto per la vista stato-per-stato (sfere di Bloch): richiede lo statevector completo
 # (2^num_qubits ampiezze) + una traccia parziale per qubit. Fattibile solo per circuiti piccoli
@@ -152,6 +146,14 @@ def _instance_theory(N: int) -> dict:
     }
 
 
+def _live_noise_scope(N: int) -> str:
+    if N == 21:
+        return "readout_only"
+    if N == 35:
+        return "depolarizing_thermal_readout"
+    return "all_illustrative_channels"
+
+
 # ---------------------------------------------------------------------------
 # Fattorizzazione: pre-processing classico + metadati del circuito
 # ---------------------------------------------------------------------------
@@ -178,6 +180,7 @@ def factor_info(N: int, seed: int | None = None) -> dict:
         "bloch_ok": qc.num_qubits <= BLOCH_MAX_QUBITS,
         "max_shots": instance["max_shots"],
         "implementation": instance["implementation"],
+        "live_noise_scope": _live_noise_scope(N),
         **theory,
         "stages": [{"label": s["label"], "kind": s["kind"], "control": s["control"]} for s in stages],
     }
@@ -383,11 +386,10 @@ def ideal_sample(N: int, seed: int | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Esperimento v2: memoria reale, distribuzione completa e metriche scientifiche
+# Esperimento v3: memoria reale, distribuzione completa e metriche scientifiche
 # ---------------------------------------------------------------------------
 ITER_SHOWN_MAX = 80
 _N15_THEORY = _instance_theory(N_FIXED)
-_RANDOM_SUCCESSFUL_OUTCOMES = _N15_THEORY["successful_outcomes"]
 RANDOM_FACTOR_FLOOR = _N15_THEORY["random_factor_floor"]
 
 
@@ -609,7 +611,7 @@ def _experiment(
         "total_outcomes": theory["dimension"],
     }
     return {
-        "schema_version": "2.0",
+        "schema_version": "3.0",
         "config": {
             "N": N,
             "a": instance["a"],
@@ -649,6 +651,7 @@ def _experiment(
                 "coherent_error": "sovrarotazione RX(delta) solo dopo le porte fisiche sx/x",
             },
             "data_source": "live_qiskit_aer_mps",
+            "live_noise_scope": _live_noise_scope(N),
             "circuit_implementation": instance["implementation"],
             "theoretical_peaks": list(theory["theoretical_peaks"]),
             "useful_peaks": list(theory["useful_peaks"]),
@@ -666,7 +669,7 @@ def run_experiment(
 
 
 def run_stats(N: int, a: int, n_count: int, noise: str, shots: int, seed: int = 42) -> dict:
-    """Adapter locale legacy, non esposto dall'API pubblica v2."""
+    """Adapter locale legacy, non esposto dall'API pubblica v3."""
     validate_instance(N, a, n_count)
     if noise not in NOISE_PRESETS:
         raise ValueError("noise deve essere uno tra: none, uc1, uc2.")

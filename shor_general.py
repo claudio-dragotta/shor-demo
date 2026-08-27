@@ -1,7 +1,7 @@
-"""Percorso locale per esperimenti con N libero, non esposto dalla demo web v2.
+"""Costruzione condivisa dei circuiti Shor e percorso locale per N libero.
 
-Le configurazioni N in {15,21,35} sono mantenute come preset. L'API interattiva resta fissata
-a N=15/a=7 per costo di simulazione, non per un dubbio sull'aritmetica: i moltiplicatori
+Le configurazioni N in {15,21,35} sono i preset validati esposti dall'API v3, con limiti
+piu' stretti per N=21/35. I moltiplicatori
 Beauregard usati da N=21/35 hanno truth table, ancilla e QPE end-to-end validate. Il ramo
 generico usa la stessa costruzione ma, per N diversi, non è coperto da quella validazione.
 
@@ -152,7 +152,7 @@ def classical_preprocess(N, seed=None):
         return dict(
             done=False, reason=None, p=None, q=None, a=a,
             validated=True, arithmetic_validated=True,
-            web_supported=N == 15, legacy_preset=True,
+            web_supported=True, legacy_preset=True,
         )
 
     # Un solo tentativo (non una manciata): è esattamente la formulazione da manuale di Shor
@@ -184,14 +184,14 @@ def classical_preprocess(N, seed=None):
 
 def speed_warning(N, shots, noise_cfg=None, extra_noise=None):
     """Stima onesta in secondi, basata sul benchmark reale in _per_shot_budget (non una formula
-    inventata): fuori dall'istanza web N=15, e specialmente con rumore attivo, il tempo può
+    inventata): fuori dall'istanza compatta N=15, e specialmente con rumore attivo, il tempo può
     salire a diversi minuti — meglio dirlo PRIMA che l'utente prema Esegui, non dopo un timeout."""
     if N == 15:
         return None
     if N in LEGACY_PRESET_N:
         return (
-            f"N={N} usa aritmetica Beauregard validata, ma è escluso dalla demo web "
-            "interattiva per il costo della simulazione classica."
+            f"N={N} usa aritmetica Beauregard validata ed è disponibile nella demo web "
+            "con un limite di 128 shot per contenere il costo della simulazione classica."
         )
     est = 25 + shots * _per_shot_budget(N, noise_cfg, extra_noise)
     if est > 90:
@@ -206,7 +206,7 @@ def speed_warning(N, shots, noise_cfg=None, extra_noise=None):
 
 def build_circuit(N, a, n_count):
     """Circuito QPE locale. N in {15,21,35}: richiama shor_core.shor_circuit; N=21/35 hanno
-    aritmetica validata ma non sono esposti dalla demo web per costo. Per gli altri N usa lo
+    aritmetica validata e limiti web più stretti. Per gli altri N usa lo
     stesso schema del ramo Beauregard di shor_circuit — H sul
     registro count, |1> sul registro x, U(a^2^j) controllate via beauregard_c_amod, QFT^-1,
     misura — solo senza il vincolo N∈{21,35} che vive nel dispatch di shor_circuit, non nella
