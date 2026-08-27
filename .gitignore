@@ -12,7 +12,7 @@ htmlcov/
 .env.*
 !.env.example
 
-# Strumentario locale di commit e deploy: resta sulla macchina dell'autore,
-# non e' parte della demo e non ha ragione di stare in un repository pubblico.
+# Gli hook di questo progetto vivono nel repository principale della tesi, che e'
+# privato. Qui la regola resta solo come guardia: se una cartella .githooks/
+# ricompare, non deve finire in un repository pubblico.
 .githooks/
-scripts/
