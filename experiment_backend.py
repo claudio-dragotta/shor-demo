@@ -25,6 +25,8 @@ from typing import Any
 
 import numpy as np
 
+from functools import lru_cache
+
 
 N_FIXED = 15
 MAX_SHOTS = 2048
@@ -57,11 +59,55 @@ class SimulationUnavailable(RuntimeError):
     """Errore pubblico e deliberatamente privo di dettagli interni del worker."""
 
 
-def instance_config(N: int) -> dict[str, Any]:
-    """Restituisce una copia della configurazione validata, senza accettare a/t dal client."""
-    if type(N) is not int or N not in INSTANCE_CONFIGS:
+class ClassicallySolved(ValueError):
+    """N non arriva al circuito: il pre-processing classico lo ha gia' risolto."""
+
+    def __init__(self, outcome: dict[str, Any]):
+        super().__init__(outcome.get("reason", "risolto senza circuito"))
+        self.outcome = outcome
+
+
+@lru_cache(maxsize=None)
+def _free_instance(N: int) -> dict[str, Any]:
+    """Configurazione per un N fuori dai tre preset della tesi.
+
+    La base la sceglie ``classical_preprocess`` con ``seed=N``: deterministico,
+    cosi' lo stesso numero produce sempre lo stesso circuito e la cache regge.
+    Se il pre-processing risolve da solo -- N pari, potenza perfetta, primo,
+    oppure gcd fortunato -- non c'e' nessun circuito da configurare e la cosa
+    risale al chiamante come ``ClassicallySolved``, che non e' un errore ma un
+    esito legittimo dell'algoritmo di Shor.
+    """
+    import shor_general as sg
+
+    outcome = sg.classical_preprocess(N, seed=N)   # alza ValueError sopra il tetto N_CAP
+    if outcome["done"]:
+        raise ClassicallySolved({**outcome, "N": N})
+    return {
+        "N": N,
+        "a": int(outcome["a"]),
+        "n_count": int(sg.n_count_for(N)),
+        "order": int(outcome["r"]),
+        "max_shots": LARGE_INSTANCE_MAX_SHOTS,
+        "implementation": f"n{N}-a{outcome['a']}-beauregard-esplorativa",
+        "validated": False,
+    }
+
+
+def instance_config(N: int, *, allow_free: bool = False) -> dict[str, Any]:
+    """Configurazione dell'istanza, senza accettare a/n_count dal client.
+
+    ``allow_free`` apre ai numeri fuori dai tre preset. Resta spento sul
+    percorso degli esperimenti rumorosi: quei circuiti stanno sui 26 qubit e il
+    rumore live non li regge. Vale solo per la vista ideale.
+    """
+    if type(N) is not int:
+        raise ValueError("N deve essere un intero.")
+    if N in INSTANCE_CONFIGS:
+        return {**INSTANCE_CONFIGS[N], "validated": True}
+    if not allow_free:
         raise ValueError("N deve essere una delle istanze validate: 15, 21 oppure 35.")
-    return dict(INSTANCE_CONFIGS[N])
+    return dict(_free_instance(N))
 
 
 def noise_is_active(config: dict[str, Any]) -> bool:

@@ -104,7 +104,7 @@ def _with_simulation_slot(callback):
 
 
 @app.get("/api/factor")
-def api_factor(N: int = Query(..., ge=2, le=100_000)):
+def api_factor(N: int = Query(..., ge=2, le=1000)):
     try:
         return api.factor_info(N)
     except ValueError as e:
@@ -112,7 +112,7 @@ def api_factor(N: int = Query(..., ge=2, le=100_000)):
 
 
 @app.get("/api/bloch")
-def api_bloch(N: int = Query(..., ge=2), a: int = Query(...), n_count: int = Query(..., ge=1),
+def api_bloch(N: int = Query(..., ge=2, le=1000), a: int = Query(...), n_count: int = Query(..., ge=1),
               stage: int = Query(0, ge=0),
               seed: int | None = Query(None, ge=0, le=2 ** 31 - 1)):
     try:
@@ -125,7 +125,7 @@ def api_bloch(N: int = Query(..., ge=2), a: int = Query(...), n_count: int = Que
 
 @app.get("/api/ideal-sample")
 def api_ideal_sample(
-    N: int = Query(..., ge=2),
+    N: int = Query(..., ge=2, le=1000),
     seed: int | None = Query(None, ge=0, le=2 ** 31 - 1),
 ):
     """Misura ideale scalabile per le istanze la cui vista Bloch sarebbe troppo grande."""

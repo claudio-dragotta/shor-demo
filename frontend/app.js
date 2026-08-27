@@ -14,7 +14,7 @@
 
   const state = {
     instance: INSTANCES[15],
-    ideal: { info: null, stage: 0, bloch: null, controller: null, requestId: 0, playing: false, timer: null },
+    ideal: { info: null, stage: 0, bloch: null, controller: null, requestId: 0, playing: false, timer: null, classical: null },
     experiment: { controller: null, requestId: 0, running: false, preset: "uc1", hasResult: false },
   };
 
@@ -193,8 +193,9 @@
   function updateIdealButtons() {
     const ready = Boolean(state.ideal.info);
     const last = ready ? state.ideal.info.stages.length - 1 : 0;
-    $("playStageBtn").disabled = !ready;
-    $("stepModeBtn").disabled = !ready;
+    const avviabile = ready || Boolean(state.ideal.classical);
+    $("playStageBtn").disabled = !avviabile;
+    $("stepModeBtn").disabled = !avviabile;
     $("prevStageBtn").disabled = !ready || state.ideal.stage === 0;
     $("nextStageBtn").disabled = !ready || state.ideal.stage >= last;
     $("stageNavCounter").textContent = ready ? `${state.ideal.stage + 1} / ${last + 1}` : "— / —";
@@ -207,7 +208,8 @@
     const idealYield = Number.isFinite(instance.idealYield) ? instance.idealYield : null;
     const twoShot = idealYield == null ? null : 1 - (1 - idealYield) ** 2;
     const blochOk = state.ideal.info?.bloch_ok !== false;
-    $("instanceABadge").textContent = `a = ${instance.a}`;
+    $("unvalidatedBadge").hidden = state.ideal.info ? state.ideal.info.validated !== false : !!INSTANCES[instance.N];
+    $("instanceABadge").textContent = `a = ${instance.a ?? "—"}`;
     $("instanceCountBadge").textContent = `t = ${instance.nCount} qubit`;
     $("theoreticalPeaks").textContent = peaks.length ? peaks.join(" · ") : "—";
     const spacing = M / instance.order;
@@ -252,6 +254,38 @@
     if (Number(select.value) > maximum) select.value = maximum >= 64 ? "64" : String(maximum);
   }
 
+  // Scegliere il numero non deve produrre il risultato: lo prepara e basta.
+  // L'esito -- classico o quantistico -- arriva quando si preme Avvia.
+  function armClassicalOutcome(info) {
+    state.ideal.info = null;
+    state.ideal.bloch = null;
+    state.ideal.classical = info;
+    hideResultPopup();
+    $("idealPanel").classList.add("is-classical");
+    $("classicPanel").hidden = true;
+    setStatus("idealStatus", `N=${info.N} pronto. Premi Avvia: il pre-processing classico risponde senza costruire il circuito.`);
+    updateIdealButtons();
+  }
+
+  function runClassicalOutcome() {
+    const info = state.ideal.classical;
+    if (!info) return;
+    const risolto = info.p != null && info.q != null;
+    $("classicPanel").hidden = false;
+    $("classicTitle").textContent = risolto
+      ? `${info.N} = ${info.p} × ${info.q}`
+      : `${info.N} non ha fattori non banali`;
+    $("classicDetail").textContent = info.reason || "";
+    setStatus("idealStatus", risolto
+      ? `N=${info.N} risolto dal pre-processing classico, senza costruire il circuito.`
+      : `N=${info.N}: il pre-processing classico chiude la questione.`, "success");
+    showResultPopup(
+      risolto,
+      risolto ? `${info.N} = ${info.p} × ${info.q}` : `${info.N}`,
+      `${info.reason}. Shor si ferma qui: la parte quantistica non serve.`,
+    );
+  }
+
   async function initIdeal() {
     const instance = state.instance;
     stopPlayback();
@@ -265,7 +299,10 @@
     try {
       const info = await apiJSON(`/api/factor?N=${instance.N}`);
       if (requestId !== state.ideal.requestId) return;
-      if (info.done) throw new Error(`Il backend ha risolto N=${instance.N} nel pre-processing e non ha costruito il circuito.`);
+      if (info.done) { armClassicalOutcome(info); return; }
+      state.ideal.classical = null;   // istanza con circuito: niente esito classico in sospeso
+      $("idealPanel").classList.remove("is-classical");
+      $("classicPanel").hidden = true;
       state.ideal.info = info;
       updateInstancePresentation();
       await loadStage(0);
@@ -363,6 +400,7 @@
   }
 
   function togglePlayback() {
+    if (state.ideal.classical) { runClassicalOutcome(); return; }
     if (state.ideal.playing) { stopPlayback(); return; }
     if (!state.ideal.info) return;
     state.ideal.playing = true;
@@ -962,30 +1000,72 @@
     $("playStageBtn").addEventListener("click", togglePlayback);
     // "A blocchi" non e' una modalita' con stato: ferma l'automatico e riporta all'inizio,
     // da dove le frecce fanno avanzare uno stadio per volta.
-    $("stepModeBtn").addEventListener("click", () => { stopPlayback(); loadStage(0); });
+    $("stepModeBtn").addEventListener("click", () => {
+      if (state.ideal.classical) { runClassicalOutcome(); return; }
+      stopPlayback(); loadStage(0);
+    });
     $("prevStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(state.ideal.stage - 1); });
     $("nextStageBtn").addEventListener("click", () => { stopPlayback(); loadStage(state.ideal.stage + 1); });
   }
 
+  // Per un N fuori dai tre preset non esiste una riga in INSTANCES: si parte da
+  // un segnaposto e currentInstance() lo sovrascrive con cio' che risponde il
+  // backend (base scelta, ordine, picchi, resa ideale).
+  function freeInstance(N) {
+    return { N, a: null, nCount: null, order: null, factors: null, maxShots: 128,
+             dimension: null, peaks: [], usefulPeaks: [], idealYield: null, randomFloor: null };
+  }
+
+  function selectInstance(N) {
+    if (!Number.isInteger(N) || N === state.instance.N) return;
+    stopPlayback();
+    state.ideal.controller?.abort();
+    state.experiment.controller?.abort();
+    state.experiment.requestId += 1;
+    state.experiment.hasResult = false;
+    state.instance = INSTANCES[N] || freeInstance(N);
+    state.ideal.classical = null;
+    state.ideal.info = null;
+    $("emptyResults").hidden = false;
+    $("experimentResults").hidden = true;
+    $("chartSummary").textContent = "Nessun dato disponibile per la nuova istanza.";
+    updateInstancePresentation();
+    if (!INSTANCES[N]) {
+      // Il laboratorio del rumore resta sulle tre istanze validate: i circuiti
+      // generici stanno sui 26 qubit e il rumore live non li regge.
+      $("runExperimentBtn").disabled = true;
+      setStatus("experimentStatus", `Il laboratorio del rumore resta sulle istanze validate 15, 21 e 35: per N=${N} il circuito e' troppo profondo per una simulazione rumorosa dal vivo.`);
+    } else {
+      $("runExperimentBtn").disabled = false;
+      if (N === 21) applyPreset("readout");
+      else refreshNoiseUI();
+      setStatus("experimentStatus", `Istanza N=${N} selezionata. Avvia il confronto per generare nuovi dati.`);
+    }
+    initIdeal();
+  }
+
   function setupInstanceControl() {
     $("instanceSelect").addEventListener("change", (event) => {
-      const next = INSTANCES[Number(event.target.value)];
-      if (!next || next.N === state.instance.N) return;
-      stopPlayback();
-      state.ideal.controller?.abort();
-      state.experiment.controller?.abort();
-      state.experiment.requestId += 1;
-      state.experiment.hasResult = false;
-      state.instance = next;
-      state.ideal.info = null;
-      $("emptyResults").hidden = false;
-      $("experimentResults").hidden = true;
-      $("chartSummary").textContent = "Nessun dato disponibile per la nuova istanza.";
-      updateInstancePresentation();
-      if (next.N === 21) applyPreset("readout");
-      else refreshNoiseUI();
-      setStatus("experimentStatus", `Istanza N=${next.N} selezionata. Avvia il confronto per generare nuovi dati.`);
-      initIdeal();
+      if (event.target.value === "altro") {
+        $("customNField").hidden = false;
+        $("customNInput").focus();
+        return;   // si aspetta il numero: non si cambia istanza a vuoto
+      }
+      $("customNField").hidden = true;
+      $("customNInput").value = "";
+      selectInstance(Number(event.target.value));
+    });
+    const submitCustom = () => {
+      const N = Number($("customNInput").value);
+      if (!Number.isInteger(N) || N < 4 || N > 47) {
+        setStatus("idealStatus", "Inserisci un intero fra 4 e 47: oltre, la simulazione classica non regge una demo dal vivo.", "error");
+        return;
+      }
+      selectInstance(N);
+    };
+    $("customNInput").addEventListener("change", submitCustom);
+    $("customNInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); submitCustom(); }
     });
   }
 

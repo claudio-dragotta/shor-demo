@@ -35,7 +35,8 @@
               <p class="kicker">Configurazione validata</p>
               <h2 id="idealControlsTitle">Esplora il circuito, uno stadio alla volta</h2>
             </div>
-            <div class="instance-badges" aria-label="Parametri validati dell'istanza">
+            <div class="instance-badges" aria-label="Parametri dell'istanza">
+              <span class="badge-unvalidated" id="unvalidatedBadge" hidden><small>Perimetro</small><b>non validata</b></span>
               <span><small>Base</small><b id="instanceABadge">a = 7</b></span>
               <span><small>Conteggio</small><b id="instanceCountBadge">t = 8 qubit</b></span>
             </div>
@@ -44,7 +45,11 @@
           <div class="transport" aria-label="Controlli del circuito">
             <label class="instance-control" for="instanceSelect">
               <span>Numero da fattorizzare</span>
-              <select id="instanceSelect"><option value="15" selected>15</option><option value="21">21</option><option value="35">35</option></select>
+              <select id="instanceSelect"><option value="15" selected>15</option><option value="21">21</option><option value="35">35</option><option value="altro">Altro…</option></select>
+            </label>
+            <label class="instance-control" for="customNInput" id="customNField" hidden>
+              <span>Quale</span>
+              <input type="number" id="customNInput" min="4" max="47" step="1" placeholder="4–47" inputmode="numeric">
             </label>
             <button class="button button-primary" id="playStageBtn" type="button">Avvia automatico</button>
             <button class="button button-secondary" id="stepModeBtn" type="button">Avvia a blocchi</button>
@@ -54,8 +59,15 @@
               <button class="icon-button" id="nextStageBtn" type="button" aria-label="Stadio successivo" title="Stadio successivo">&#9654;</button>
             </div>
           </div>
+          <div class="classic-notice" id="classicPanel" hidden>
+            <p class="kicker">Non serve il circuito</p>
+            <p class="classic-result" id="classicTitle">—</p>
+            <p id="classicDetail">—</p>
+            <p class="classic-note">Il pre-processing classico di Shor risolve prima di arrivare alla parte quantistica. È il motivo per cui l’algoritmo si applica solo ai numeri che il classico non spezza da solo.</p>
+          </div>
           <p class="status-line" id="idealStatus" role="status" aria-live="polite">Preparo il circuito ideale…</p>
         </section>
+
 
         <div class="ideal-layout">
           <section class="panel circuit-panel" aria-labelledby="circuitTitle">

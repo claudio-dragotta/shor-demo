@@ -461,3 +461,32 @@ footer p { margin: 0; }
   .result-popup-card { animation: popup-in .18s ease-out; }
   @keyframes popup-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 }
+
+/* Numeri fuori dai tre preset della tesi: la demo li calcola, ma dichiara che
+   non sono coperti dalla validazione. La distinzione deve restare leggibile. */
+.badge-unvalidated b { color: var(--amber); }
+.badge-unvalidated[hidden] { display: none; }
+
+/* Quando il pre-processing classico risolve da solo non c'e' circuito: la
+   scheda mostra il perche' al posto degli stadi. */
+.classic-notice {
+  margin-top: 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--green);
+  border-radius: 12px;
+  background: rgba(75, 213, 163, .06);
+}
+.classic-notice[hidden] { display: none; }
+.classic-notice .classic-result { margin: 4px 0 10px; color: var(--green); font: 700 1.5rem/1.15 var(--mono); }
+.classic-notice > p:not(.kicker):not(.classic-result) { margin: 0 0 8px; color: var(--text); font-size: .84rem; line-height: 1.6; }
+.classic-notice .classic-note { margin-bottom: 0; color: var(--muted); font-size: .78rem; }
+/* Selettore e pulsanti di avvio restano: da li' si cambia numero e da li' si
+   ottiene la risposta anche quando il circuito non esiste. Spariscono solo le
+   frecce fra gli stadi e le sezioni che descrivono un circuito assente. */
+#idealPanel.is-classical .ideal-layout,
+#idealPanel.is-classical .math-panel,
+#idealPanel.is-classical .probability-strip,
+#idealPanel.is-classical .explanation-panel,
+#idealPanel.is-classical .instance-badges,
+#idealPanel.is-classical .stage-nav { display: none; }

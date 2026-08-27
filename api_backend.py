@@ -26,6 +26,7 @@ import numpy as np
 import shor_general as sg
 from shor_general import extract_factors  # importato in shor_general da shor_core
 from experiment_backend import (
+    ClassicallySolved,
     GATE_TIME_1Q_NS,
     GATE_TIME_2Q_NS,
     MAX_SHOTS,
@@ -56,7 +57,7 @@ BLOCH_MAX_QUBITS = 16
 
 def validate_instance(N: int, a: int | None = None, n_count: int | None = None) -> None:
     """Mantiene gli endpoint nel perimetro delle tre istanze validate."""
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     if a is not None and (type(a) is not int or a != instance["a"]):
         raise ValueError(f"Per N={N} la base validata deve essere a={instance['a']}.")
     if n_count is not None and (
@@ -70,7 +71,7 @@ def validate_instance(N: int, a: int | None = None, n_count: int | None = None) 
 @lru_cache(maxsize=None)
 def _theoretical_distribution(N: int) -> tuple[float, ...]:
     """Legge QPE esatta a registro finito, mediata sulle autofasi dell'ordine."""
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     dimension = 2 ** instance["n_count"]
     order = instance["order"]
     probabilities = []
@@ -93,7 +94,7 @@ def _theoretical_distribution(N: int) -> tuple[float, ...]:
 
 @lru_cache(maxsize=None)
 def _outcome_info(N: int) -> tuple[tuple[bool, tuple[int, int] | None], ...]:
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     rows = []
     for value in range(2 ** instance["n_count"]):
         p, q = extract_factors(value, instance["n_count"], N, instance["a"])
@@ -111,19 +112,19 @@ def _instance_circuit(N: int):
     leggono soltanto: ``_statevector_upto`` ricopia le istruzioni in un circuito
     nuovo e non tocca questo. Condividerlo e' quindi sicuro.
     """
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     return sg.build_circuit(N, instance["a"], instance["n_count"])
 
 
 @lru_cache(maxsize=None)
 def _instance_stages(N: int) -> list[dict]:
     """Stessa ragione: dipende solo da N. Restituita per sola lettura."""
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     return _stages(_instance_circuit(N), instance["n_count"])
 
 
 def _instance_theory(N: int) -> dict:
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     dimension = 2 ** instance["n_count"]
     peaks = tuple(sorted({round(k * dimension / instance["order"]) for k in range(instance["order"])}))
     outcomes = _outcome_info(N)
@@ -154,11 +155,34 @@ def _live_noise_scope(N: int) -> str:
 # ---------------------------------------------------------------------------
 # Fattorizzazione: pre-processing classico + metadati del circuito
 # ---------------------------------------------------------------------------
+def _classical_outcome(outcome: dict) -> dict:
+    """Shor si e' fermato prima del circuito.
+
+    Non e' un errore: il pre-processing classico fa parte dell'algoritmo, ed e'
+    la ragione per cui Shor si applica solo a certi N. Va mostrato, non nascosto
+    dietro un messaggio di rifiuto.
+    """
+    p, q = outcome.get("p"), outcome.get("q")
+    return {
+        "N": int(outcome["N"]),
+        "done": True,
+        "solved_classically": True,
+        "reason": outcome.get("reason"),
+        "p": int(p) if p is not None else None,
+        "q": int(q) if q is not None else None,
+        "validated": False,
+        "a": outcome.get("a"),
+    }
+
+
 def factor_info(N: int, seed: int | None = None) -> dict:
-    """Configurazione e struttura di una delle tre istanze validate."""
+    """Configurazione e struttura dell'istanza: uno dei tre preset, oppure un N libero."""
     del seed  # mantenuto nella firma per compatibilita' con chiamanti locali precedenti
-    validate_instance(N)
-    instance = instance_config(N)
+    try:
+        validate_instance(N)
+    except ClassicallySolved as solved:
+        return _classical_outcome(solved.outcome)
+    instance = instance_config(N, allow_free=True)
     theory = _instance_theory(N)
     qc = _instance_circuit(N)
     stages = _instance_stages(N)
@@ -169,7 +193,7 @@ def factor_info(N: int, seed: int | None = None) -> dict:
         "n_count": instance["n_count"],
         "order": instance["order"],
         "num_qubits": qc.num_qubits,
-        "validated": True,
+        "validated": bool(instance.get("validated", False)),
         "validation_scope": (
             f"N={N}, a={instance['a']}, n_count={instance['n_count']}"
         ),
@@ -278,7 +302,7 @@ def bloch_at(N: int, a: int, n_count: int, stage: int, seed: int | None = None) 
     """Stato dei qubit di conteggio allo stadio `stage`: vettore di Bloch reale + operazione in
     corso + (alla misura) il bit collassato. `stage` 0..n_stages-1."""
     validate_instance(N, a, n_count)
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     if type(stage) is not int or stage < 0:
         raise ValueError("Lo stadio deve essere un intero non negativo.")
     qc = _instance_circuit(N)
@@ -361,7 +385,7 @@ def ideal_sample(N: int, seed: int | None = None) -> dict:
     """
     validate_instance(N)
     effective_seed = _validate_shots_seed(1, seed, min_shots=1)
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     rng = np.random.default_rng(effective_seed)
     value = int(rng.choice(len(_theoretical_distribution(N)), p=_theoretical_distribution(N)))
     p, q = extract_factors(value, instance["n_count"], N, instance["a"])
@@ -461,7 +485,7 @@ def _wilson_interval(successes: int, total: int) -> dict:
 
 
 def _analyse_memory(memory: list[str], N: int) -> dict:
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     n_count = instance["n_count"]
     theory = _instance_theory(N)
     outcome_info = _outcome_info(N)
@@ -591,7 +615,7 @@ def _experiment(
     N: int, shots: int, seed: int | None, noise: dict | None, *, min_shots: int
 ) -> dict:
     validate_instance(N)
-    instance = instance_config(N)
+    instance = instance_config(N, allow_free=True)
     if type(shots) is not int or shots > instance["max_shots"]:
         raise ValueError(
             f"shots deve essere un intero tra {min_shots} e {instance['max_shots']} per N={N}."
