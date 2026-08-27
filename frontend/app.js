@@ -152,16 +152,6 @@
     });
   }
 
-  function setupDialog() {
-    const dialog = $("guideDialog");
-    const open = () => { if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", ""); };
-    const close = () => dialog.close ? dialog.close() : dialog.removeAttribute("open");
-    $("openGuideBtn").addEventListener("click", open);
-    $("closeGuideBtn").addEventListener("click", close);
-    $("dialogOkBtn").addEventListener("click", close);
-    dialog.addEventListener("click", (event) => { if (event.target === dialog) close(); });
-  }
-
   const STAGE_COPY = {
     init0: {
       title: "Stato iniziale",
@@ -220,10 +210,6 @@
     $("instanceNBadge").textContent = `N = ${instance.N}`;
     $("instanceABadge").textContent = `a = ${instance.a}`;
     $("instanceCountBadge").textContent = `t = ${instance.nCount} qubit`;
-    $("instanceSummary").textContent = blochOk
-      ? `N=${instance.N} usa il circuito textbook compatto: simulazione live e vista esatta dello stato ridotto.`
-      : `N=${instance.N} usa aritmetica Beauregard validata (${state.ideal.info?.num_qubits || "—"} qubit totali): circuito e QPE sono reali, la vista Bloch completa è omessa per il costo esponenziale.`;
-    $("idealNoticeText").innerHTML = `Con <span class="mono">N=${instance.N}, a=${instance.a}</span> la legge QPE ideale estrae i fattori in circa il <strong>${percentMetric(idealYield)}</strong> dei singoli shot. La ripetizione è parte dell’algoritmo, non un errore fisico.`;
     $("theoreticalPeaks").textContent = peaks.length ? peaks.join(" · ") : "—";
     const spacing = M / instance.order;
     $("peakExplanation").innerHTML = `Posizioni vicine ai multipli di <span class="mono">2^${instance.nCount} / r = ${numberIT(spacing, Number.isInteger(spacing) ? 0 : 2)}</span>, con <span class="mono">r=${instance.order}</span>.`;
@@ -238,11 +224,6 @@
     $("stateViewNote").textContent = blochOk
       ? "Mostra i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro."
       : "Gli stadi, i controlli e la misura restano quelli del circuito validato. L’esito ideale è campionato dalla legge QPE esatta a registro finito.";
-    $("noiseInstanceNotice").textContent = instance.N === 21
-      ? `Il confronto usa il circuito validato per N=21. Ideale e readout sono live; il rumore interno ai gate è disabilitato perché supera il timeout già con 10 shot.`
-      : instance.N === 35
-        ? "Per N=35 depolarizzazione, termico e readout sono live; la sovrarotazione è disabilitata. Con rumore quantistico il limite è 32 shot."
-        : `Il confronto usa lo stesso circuito validato per N=${instance.N}. Limite live: ${instance.maxShots} shot per distribuzione.`;
     $("randomBaselineValue").textContent = percentMetric(instance.randomFloor);
     $("randomBaseline").title = `Successo del post-processing su una distribuzione uniforme dei ${M} esiti`;
     $("idealBaselineText").innerHTML = `<strong>Riferimento ideale teorico per N=${instance.N}:</strong> picchi presso <span class="mono">${peaks.join(", ")}</span>; probabilità teorica di fattorizzazione per shot ≈ <strong>${percentMetric(idealYield, 2)}</strong>. I dati dell’esperimento sono generati live con Qiskit Aer.`;
@@ -970,7 +951,6 @@
 
   function init() {
     setupTabs();
-    setupDialog();
     setupIdealControls();
     setupNoiseControls();
     setupInstanceControl();

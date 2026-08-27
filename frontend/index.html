@@ -13,22 +13,8 @@
 
   <div class="shell">
     <header class="site-header">
-      <div>
-        <p class="eyebrow">Demo sperimentale · Algoritmo di Shor</p>
-        <h1>Dal circuito ideale al <em>rumore quantistico</em></h1>
-        <p class="lede">Prima osserva come emerge il periodo in condizioni ideali. Poi isola gli errori e misura quanto deformano lo stesso esperimento.</p>
-      </div>
-      <button class="button button-quiet" id="openGuideBtn" type="button" aria-haspopup="dialog">Come leggere la demo</button>
+      <h1>Dal circuito ideale al <em>rumore quantistico</em></h1>
     </header>
-
-    <section class="instance-switcher" aria-labelledby="instanceSwitcherTitle">
-      <div>
-        <p class="kicker">Istanza dell’algoritmo</p>
-        <h2 id="instanceSwitcherTitle">Cambia numero e osserva cambiare periodo e distribuzione</h2>
-        <p id="instanceSummary">N=15 usa il circuito textbook compatto e consente anche la vista di Bloch.</p>
-      </div>
-      <label for="instanceSelect"><span>Numero da fattorizzare</span><select id="instanceSelect"><option value="15" selected>15 = 3 × 5</option><option value="21">21 = 3 × 7</option><option value="35">35 = 5 × 7</option></select></label>
-    </section>
 
     <nav class="tabs" role="tablist" aria-label="Sezioni della demo">
       <button class="tab is-active" id="idealTab" type="button" role="tab" aria-selected="true" aria-controls="idealPanel" tabindex="0" data-tab="ideal">
@@ -42,15 +28,11 @@
     </nav>
 
     <main id="mainContent">
-      <section class="tab-panel" id="idealPanel" role="tabpanel" aria-labelledby="idealTab">
-        <div class="notice notice-ideal">
-          <span class="notice-icon" aria-hidden="true">◇</span>
-          <div>
-            <strong>Ideale non significa deterministico.</strong>
-            <p id="idealNoticeText">Con <span class="mono">N=15, a=7</span> la simulazione ideale restituisce un esito utile in circa il <strong>75% dei singoli shot</strong>. La ripetizione è parte dell’algoritmo, non un errore fisico.</p>
-          </div>
-        </div>
+      <div class="instance-control">
+        <label for="instanceSelect"><span>Numero da fattorizzare</span><select id="instanceSelect"><option value="15" selected>15 = 3 × 5</option><option value="21">21 = 3 × 7</option><option value="35">35 = 5 × 7</option></select></label>
+      </div>
 
+      <section class="tab-panel" id="idealPanel" role="tabpanel" aria-labelledby="idealTab">
         <section class="panel control-panel" aria-labelledby="idealControlsTitle">
           <div class="section-heading compact-heading">
             <div>
@@ -135,11 +117,6 @@
       </section>
 
       <section class="tab-panel" id="noisePanel" role="tabpanel" aria-labelledby="noiseTab" hidden>
-        <div class="notice notice-noise">
-          <span class="notice-icon" aria-hidden="true">≋</span>
-          <div><strong>Stessa istanza, confronto controllato.</strong><p id="noiseInstanceNotice">La baseline ideale rimane sempre visibile. Attiva un solo canale per attribuire l’effetto, oppure combinali per simulare un preset NISQ illustrativo.</p></div>
-        </div>
-
         <section class="panel control-panel" aria-labelledby="noiseControlsTitle">
           <div class="section-heading compact-heading">
             <div><p class="kicker">Configurazione dell’esperimento</p><h2 id="noiseControlsTitle">Costruisci il modello di rumore</h2></div>
@@ -239,14 +216,6 @@
     <footer><p>Demo didattica · istanze compilate e validate <span class="mono">N=15, 21, 35</span>. I preset descrivono un modello NISQ illustrativo, non una specifica QPU reale.</p></footer>
   </div>
 
-  <dialog id="guideDialog" aria-labelledby="guideTitle" aria-describedby="guideDescription">
-    <div class="dialog-card">
-      <button class="dialog-close" id="closeGuideBtn" type="button" aria-label="Chiudi la guida">×</button>
-      <p class="kicker">Guida alla lettura</p><h2 id="guideTitle">Due domande, due esperimenti</h2>
-      <div id="guideDescription" class="dialog-copy"><p><strong>Simulatore ideale:</strong> segue il circuito senza errori fisici e separa la parte quantistica dal post-processing classico. Anche qui la misura resta probabilistica.</p><p><strong>Laboratorio del rumore:</strong> campiona la stessa istanza con e senza i canali selezionati, usando uguale budget di shot. Con rumore attivo, il seed scelto genera due stream riproducibili e indipendenti; con rumore disattivato, lo stesso campione è riusato per verificare l'identità esatta. Confronta P(fattori), massa dei picchi e distanza tra le distribuzioni.</p><p>Per attribuire una variazione a un meccanismo preciso, disattiva gli altri canali e conserva lo stesso seed radice. T₁ e T₂ costituiscono insieme il canale termico e vengono attivati come coppia.</p></div>
-      <button class="button button-primary" id="dialogOkBtn" type="button">Ho capito</button>
-    </div>
-  </dialog>
   <script src="app.js"></script>
 </body>
 </html>
