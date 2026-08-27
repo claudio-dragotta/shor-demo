@@ -5,12 +5,12 @@ piu' stretti per N=21/35. I moltiplicatori
 Beauregard usati da N=21/35 hanno truth table, ancilla e QPE end-to-end validate. Il ramo
 generico usa la stessa costruzione ma, per N diversi, non è coperto da quella validazione.
 
-Per qualsiasi altro N non uso `shor_core.c_amod`, basato su una matrice `UnitaryGate` di
-dimensione esponenziale. Uso `beauregard_c_amod` (Beauregard 2002, `beauregard.py`), la stessa
+Per qualsiasi altro N uso `beauregard_c_amod` (Beauregard 2002, `beauregard.py`), la stessa
 decomposizione aritmetica dei preset N=21/35, generica in N. Il costo resta però elevato: nel
 contratto riproducibile Qiskit 2.5.0, `N=21, a=2, n_count=8`, compilato nella base
-RZ/SX/X/CX, contiene 21.036 CX e ha profondità 23.081. Il valore
-`(1-lambda_2q)^21036 = 7,237862389e-10` per
+RZ/SX/X/CX, contiene 21.036 CX e ha profondità 23.081. Quel conteggio vale per `n_count=8`,
+la diagnostica della tesi; la demo usa `n_count=10` per N=21, quindi un circuito più grande.
+Il valore `(1-15*lambda_2q/16)^21036 = 2,698687974e-09` per
 `lambda_2q=0,001` è soltanto un proxy indipendente di "nessun evento 2Q", non una probabilità
 di successo, una fedeltà del circuito o una previsione del rendimento di Shor.
 

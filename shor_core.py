@@ -6,9 +6,7 @@ web v3 espone tutte e tre le istanze con un limite di shot più stretto per N=21
 import numpy as np
 from math import gcd, ceil, log2
 from fractions import Fraction
-from qiskit import QuantumCircuit, transpile
-from qiskit.circuit.library import UnitaryGate
-from qiskit_aer import AerSimulator
+from qiskit import QuantumCircuit
 from qiskit_aer.noise import (
     NoiseModel, depolarizing_error, thermal_relaxation_error, ReadoutError
 )
@@ -45,27 +43,6 @@ def c_amod15(a, power):
     return U.control(annotated=False)
 
 
-# --- Controlled modular exponentiation (generale, per N qualsiasi) ---
-def c_amod(a, N, power):
-    """
-    Gate controllato U|x⟩ = |a^power·x mod N⟩ via matrice di permutazione.
-    Usa UnitaryGate: corretto per qualsiasi N,a con gcd(a,N)=1.
-    """
-    n_work = ceil(log2(N + 1))
-    size = 2 ** n_work
-    a_pow = pow(a, power, N)
-    # Matrice di permutazione: mat[y,x]=1 iff y = a_pow*x mod N
-    mat = np.zeros((size, size), dtype=complex)
-    for x in range(size):
-        if x == 0 or x >= N:
-            mat[x, x] = 1.0  # identità per 0 e fuori range
-        else:
-            y = (a_pow * x) % N
-            mat[y, x] = 1.0
-    gate = UnitaryGate(mat, label=f'{a}^{power} mod {N}')
-    return gate.control(1, annotated=False)
-
-
 # --- Shor circuit (QPE per N=15, N=21, N=35) ---
 def shor_circuit(N, a, n_count):
     """
@@ -88,10 +65,11 @@ def shor_circuit(N, a, n_count):
             raise NotImplementedError(f"N={N} non supportato. Usa N in {{15, 21, 35}}.")
         # Riferimento riproducibile di costo (Qiskit 2.5.0, optimization_level=2,
         # seed_transpiler=20260819, base RZ/SX/X/CX): N=21, a=2, n_count=8 produce
-        # 21.036 CX e profondita' 23.081. Il proxy indipendente di nessun evento
-        # 2Q e' soltanto (1-lambda_2q)^21036 = 7,237862389e-10 per
-        # lambda_2q=0,001: non e' una
-        # probabilita' di successo, una fedelta' o una misura della QPE.
+        # 21.036 CX e profondita' 23.081. Quel conteggio e' della diagnostica della
+        # tesi: la demo usa n_count=10 per N=21, quindi un circuito piu' grande.
+        # Il proxy indipendente di nessun evento 2Q e' soltanto
+        # (1-15*lambda_2q/16)^21036 = 2,698687974e-09 per lambda_2q=0,001: non e'
+        # una probabilita' di successo, una fedelta' o una misura della QPE.
         # Layout qubit Beauregard: [count | x(n) | b(n+1) | anc]
         n = ceil(log2(N + 1))
         n_b = n + 1
@@ -145,57 +123,3 @@ def build_noise_model(eps_1q, eps_2q, t1_ns, t2_ns, gate_time_ns=50, p_ro=0.02):
     nm.add_all_qubit_readout_error(
         ReadoutError([[1 - p_ro, p_ro], [p_ro, 1 - p_ro]]))
     return nm
-
-
-def _sim(noise_model=None):
-    """AerSimulator MPS (matrix product state) — molto più veloce per circuiti profondi."""
-    kw = {'method': 'matrix_product_state'}
-    return AerSimulator(noise_model=noise_model, **kw) if noise_model else AerSimulator(**kw)
-
-
-# --- Metodo 1 (TOP-1: picco più frequente per iterazione) ---
-def run_method1(N, a, n_count, noise_model, shots=1024,
-                max_iter=50, seed=42):
-    base_qc = shor_circuit(N, a, n_count)
-    # opt=2: elimina SWAP residui dall'IQFT e decompone CCX → CX (corretto per noise model)
-    sim = _sim(noise_model)
-    transpiled = transpile(base_qc, sim, optimization_level=2)
-    for iteration in range(1, max_iter + 1):
-        counts = sim.run(transpiled, shots=shots,
-                         seed_simulator=seed * 10000 + iteration).result().get_counts()
-        meas = int(max(counts, key=counts.get), 2)
-        p, q = extract_factors(meas, n_count, N, a)
-        if p is not None:
-            return {'factors': (p, q), 'iterations': iteration, 'success': True,
-                    'counts': counts}
-    return {'factors': (None, None), 'iterations': max_iter, 'success': False,
-            'counts': {}}
-
-
-# --- Metodo 2 — classificatore ML + ricerca TOP-K ---
-def run_method2(N, a, n_count, noise_model, classifier,
-                shots=1024, max_iter=50, seed=42, top_k=4):
-    """
-    M2: il classificatore decide se l'istogramma ha segnale QPE recuperabile (top_k=4).
-    Se clf=1, prova i top_k candidati più frequenti in ordine decrescente — cattura picchi
-    QPE spostati dal rumore (es. mode=65 invece di 64). Se clf=0, l'istogramma è piatto:
-    nessun candidato sarebbe affidabile, si salta l'iterazione.
-    """
-    base_qc = shor_circuit(N, a, n_count)
-    sim = _sim(noise_model)
-    transpiled = transpile(base_qc, sim, optimization_level=2)
-    for iteration in range(1, max_iter + 1):
-        counts = sim.run(transpiled, shots=shots,
-                         seed_simulator=seed * 10000 + iteration).result().get_counts()
-        feature = np.zeros(2 ** n_count)
-        for k, v in counts.items():
-            feature[int(k, 2)] = v / shots
-        if classifier.predict([feature])[0] == 0:
-            continue  # Istogramma troppo rumoroso: salta iterazione
-        # Prova i top_k candidati più frequenti
-        sorted_meas = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-        for meas_str, _ in sorted_meas[:top_k]:
-            p, q = extract_factors(int(meas_str, 2), n_count, N, a)
-            if p is not None:
-                return {'factors': (p, q), 'iterations': iteration, 'success': True}
-    return {'factors': (None, None), 'iterations': max_iter, 'success': False}

@@ -189,9 +189,11 @@ validi i risultati rumorosi storici, che vanno rigenerati.
 
 Il costo è misurato nello stesso ambiente bloccato da `requirements.txt`: con Qiskit 2.5.0,
 `optimization_level=2`, `seed_transpiler=20260819` e base `rz/sx/x/cx`, il circuito
-`N=21, a=2, n_count=8` contiene **21.036 CX** e ha profondità **23.081**. La quantità
-`(1-15 lambda_2q/16)^21036 = 7,237862389e-10` (circa `7,24e-10`) per `lambda_2q=0,001` è riportata esclusivamente come
-**proxy di nessun evento 2Q indipendente**. Non è la probabilità di successo di Shor, non è
+`N=21, a=2, n_count=8` contiene **21.036 CX** e ha profondità **23.081**. È la diagnostica di
+compilazione della tesi, non l'istanza di questa demo: qui `N=21` usa `n_count=10`, quindi due
+moltiplicazioni modulari controllate in più e un circuito più grande. La quantità
+`(1-15 lambda_2q/16)^21036 = 2,698687974e-09` (circa `2,70e-09`) per `lambda_2q=0,001` è
+riportata esclusivamente come **proxy di nessun evento 2Q indipendente**. Non è la probabilità di successo di Shor, non è
 la fedeltà del circuito e non sostituisce una simulazione rumorosa.
 
 La v2 aveva inoltre corretto il moltiplicatore textbook `N=15, a=7`: la sua orbita è

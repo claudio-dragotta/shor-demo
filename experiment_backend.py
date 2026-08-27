@@ -27,8 +27,6 @@ import numpy as np
 
 
 N_FIXED = 15
-A_FIXED = 7
-N_COUNT_FIXED = 8
 MAX_SHOTS = 2048
 LARGE_INSTANCE_MAX_SHOTS = 128
 LARGE_QUANTUM_NOISE_MAX_SHOTS = 32
@@ -293,7 +291,7 @@ def run_pair_isolated(
 ) -> dict[str, Any]:
     """Esegue baseline e run rumoroso senza propagare stderr/traceback al chiamante."""
     active = noise_is_active(noise)
-    instance = validate_live_experiment(N, shots, noise)
+    validate_live_experiment(N, shots, noise)
     run_id = uuid.uuid4().hex[:12]
     if timeout_seconds is None:
         # Il caso rumoroso usa traiettorie stocastiche e scala con gli shot. Il tetto

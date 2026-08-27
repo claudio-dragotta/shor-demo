@@ -35,7 +35,7 @@ from experiment_backend import (
     run_pair_isolated,
 )
 
-# Preset storici della tesi: UC1 moderato e UC2 stress, entrambi illustrativi.
+# Assenza di rumore: base su cui normalise_noise_config completa la richiesta.
 ZERO_NOISE = {
     "eps_1q": 0.0,
     "eps_2q": 0.0,
@@ -44,29 +44,6 @@ ZERO_NOISE = {
     "readout_0to1": 0.0,
     "readout_1to0": 0.0,
     "coherent_overrotation_deg": 0.0,
-}
-
-# Preset storici della tesi, ora esposti con tutti i parametri espliciti e separati.
-NOISE_PRESETS = {
-    "none": dict(ZERO_NOISE),
-    "uc1": {
-        **ZERO_NOISE,
-        "eps_1q": 1e-3,
-        "eps_2q": 1e-2,
-        "t1_us": 100.0,
-        "t2_us": 80.0,
-        "readout_0to1": 0.02,
-        "readout_1to0": 0.02,
-    },
-    "uc2": {
-        **ZERO_NOISE,
-        "eps_1q": 5e-3,
-        "eps_2q": 5e-2,
-        "t1_us": 50.0,
-        "t2_us": 30.0,
-        "readout_0to1": 0.05,
-        "readout_1to0": 0.05,
-    },
 }
 
 # Tetto per la vista stato-per-stato (sfere di Bloch): richiede lo statevector completo
@@ -668,57 +645,6 @@ def run_experiment(
     return _experiment(N, shots, seed, noise, min_shots=10)
 
 
-def run_stats(N: int, a: int, n_count: int, noise: str, shots: int, seed: int = 42) -> dict:
-    """Adapter locale legacy, non esposto dall'API pubblica v3."""
-    validate_instance(N, a, n_count)
-    if noise not in NOISE_PRESETS:
-        raise ValueError("noise deve essere uno tra: none, uc1, uc2.")
-    experiment = _experiment(N, shots, seed, NOISE_PRESETS[noise], min_shots=1)
-    selected = experiment["ideal"] if noise == "none" else experiment["noisy"]
-    ranked = sorted(
-        (row for row in selected["distribution"] if row["count"] > 0),
-        key=lambda row: (-row["count"], row["value"]),
-    )
-    legacy_distribution = [
-        {
-            "value": row["value"],
-            "bits": row["bits"],
-            "count": row["count"],
-            "probability": row["probability"],
-            "ok": row["factor_success"],
-        }
-        for row in ranked[:12]
-    ]
-    return {
-        "shots": shots,
-        "noise": noise,
-        "seed": experiment["config"]["seed"],
-        "p_success": round(100.0 * selected["factor_yield"], 1),
-        "factor_yield": selected["factor_yield"],
-        "n_ok": selected["n_ok"],
-        "total": selected["shots"],
-        "factors_found": selected["factors_found"],
-        "found_at": selected["found_at"],
-        "iterations": selected["iterations"],
-        "iterations_shown": selected["iterations_shown"],
-        "distribution": legacy_distribution,
-        "full_distribution": selected["distribution"],
-        "memory": selected["memory"],
-        "top_value": selected["top_value"],
-        # Compatibilita' UI: questo campo ora significa "fattori trovati da almeno uno shot".
-        "top_factors": selected["factors_found"],
-        "modal_factors": selected["modal_factors"],
-        "metrics": {
-            "wilson_ci": selected["wilson_ci"],
-            "peak_mass": selected["peak_mass"],
-            "useful_peak_mass": selected["useful_peak_mass"],
-            "entropy_bits": selected["entropy_bits"],
-            "random_factor_floor": experiment["random_factor_floor"],
-        },
-        "metadata": experiment["metadata"],
-    }
-
-
 # ---------------------------------------------------------------------------
 # Self-test (senza server): python api_backend.py
 # ---------------------------------------------------------------------------
@@ -730,5 +656,3 @@ if __name__ == "__main__":
         b = bloch_at(15, info["a"], info["n_count"], stg)
         row = " | ".join(f"c{q['i']}:{q['name']}(r={q.get('len','-')})" for q in b["qubits"][:4])
         print(f"  stadio {stg} [{b['label']}]: {row}")
-    print("run_stats(15,none,64):", {k: run_stats(15, info["a"], info["n_count"], "none", 64)[k]
-                                       for k in ("p_success", "top_factors")})
