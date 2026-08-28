@@ -6,8 +6,21 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # plan: "starter" = server SEMPRE ATTIVO (~7 $/mese, nessun cold start).
-    # Metti "free" per il gratuito (si spegne dopo ~15 min di inattività, riavvio a freddo).
-    plan: starter
+    # Il piano si cambia QUI, non dal pannello: per un servizio creato da Blueprint
+    # Render considera questo file la fonte di verità e disattiva il controllo nella
+    # dashboard. Un push su questo file, con autoDeploy attivo, applica il cambio.
+    #
+    #   free     512 MB — si spegne dopo ~15 min di inattività, riavvio a freddo
+    #   starter  512 MB — sempre attivo, nessun cold start
+    #   standard   2 GB — il primo scalino che alza davvero la memoria
+    #
+    # Serve "standard" perché /api/noisy-bloch evolve la matrice densità di 12 qubit
+    # (4096x4096 complessi = 268 MB di solo stato, picco misurato ~1,3 GB con i buffer
+    # di Aer): sotto i 512 MB il container viene ucciso dall'OOM e cade tutto il sito,
+    # non solo quella richiesta. Con 2 GB il margine resta circa il 25%, e regge solo
+    # perché il semaforo in server.py ammette una simulazione per volta.
+    #
+    # I prezzi cambiano: controllare la pagina dei piani di Render prima di pushare.
+    plan: standard
     healthCheckPath: /health
     autoDeploy: true
