@@ -490,3 +490,138 @@ footer p { margin: 0; }
 #idealPanel.is-classical .explanation-panel,
 #idealPanel.is-classical .instance-badges,
 #idealPanel.is-classical .stage-nav { display: none; }
+
+/* Anatomia del rumore: dove agisce ciascun canale e quanto pesa. Il modello e'
+   uniforme su tutti i qubit, quindi non si disegna un chip con qubit diversi
+   fra loro: si mostra su quante porte l'errore entra. */
+.anatomy-scope { color: var(--dim); font: 700 .68rem/1 var(--mono); }
+.anatomy-grid { display: grid; gap: 8px; margin: 16px 0 14px; }
+.anatomy-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(120px, .9fr) minmax(0, 1.6fr);
+  gap: 6px 16px;
+  align-items: baseline;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(10, 11, 19, .35);
+  transition: border-color .15s, background .15s;
+}
+.anatomy-row strong { font-size: .8rem; }
+.anatomy-where { color: var(--dim); font: 700 .7rem/1.3 var(--mono); }
+.anatomy-value { color: var(--muted); font-size: .76rem; line-height: 1.4; }
+.anatomy-row.is-on { border-left-color: var(--amber); background: var(--amber-soft); }
+.anatomy-row.is-on .anatomy-value { color: var(--amber); font-weight: 650; }
+.anatomy-row.is-virtual { border-left-color: var(--cyan); opacity: .78; }
+.anatomy-note { margin: 0; color: var(--dim); font-size: .74rem; line-height: 1.5; }
+@media (max-width: 900px) {
+  .anatomy-row { grid-template-columns: 1fr; }
+}
+
+/* Schema del circuito nella scheda del rumore. Non e' il circuito compilato
+   disegnato porta per porta -- sono 224 cx su N=15 e 26.310 su N=21 -- ma le
+   quattro famiglie di porte e il canale che agisce su ciascuna. */
+.anatomy-scroller { overflow-x: auto; margin: 18px 0 6px; }
+.anatomy-svg { display: block; width: 100%; min-width: 720px; height: auto; }
+.ana-wire { stroke: var(--line-strong); stroke-width: 2; }
+.ana-wire-label { fill: var(--dim); font: 700 13px var(--mono); }
+.ana-gate { fill: rgba(19, 21, 34, .9); stroke: var(--line-strong); stroke-width: 1.5; }
+.ana-gate-text { fill: var(--text); font: 700 15px var(--mono); text-anchor: middle; }
+.ana-ctrl { fill: var(--line-strong); }
+.ana-cxline { stroke: var(--line-strong); stroke-width: 2; }
+.ana-target { fill: none; stroke: var(--line-strong); stroke-width: 2; }
+.ana-cross { stroke: var(--line-strong); stroke-width: 2; }
+.ana-link { stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 4; }
+.ana-cap { fill: var(--dim); font: 700 12px var(--sans); text-anchor: middle; }
+.ana-cap-dim { fill: var(--line-strong); font-weight: 600; font-size: 11px; }
+.ana-count { fill: var(--muted); font: 700 12px var(--mono); text-anchor: middle; }
+
+/* Canale acceso: la porta su cui agisce si illumina, e con essa la didascalia. */
+.ana-slot.is-on .ana-gate { stroke: var(--amber); fill: var(--amber-soft); }
+.ana-slot.is-on .ana-gate-text { fill: var(--amber); }
+.ana-slot.is-on .ana-ctrl, .ana-slot.is-on .ana-target,
+.ana-slot.is-on .ana-cross, .ana-slot.is-on .ana-cxline { stroke: var(--amber); fill: none; }
+.ana-slot.is-on .ana-ctrl { fill: var(--amber); }
+.ana-slot.is-on .ana-cap { fill: var(--amber); }
+.ana-slot.is-on .ana-count { fill: var(--amber); }
+.ana-slot.is-on .ana-link { stroke: var(--amber); }
+/* Le rz restano fuori dal gioco: mai accese, e lo dicono. */
+.ana-slot.is-virtual .ana-gate { stroke: var(--cyan); }
+.ana-slot.is-virtual .ana-cap, .ana-slot.is-virtual .ana-count { fill: var(--cyan); }
+
+/* --- Scheda del rumore: preset in cima, circuito al centro, dettaglio a parte --- */
+.noise-topbar { padding: 20px 22px; }
+.noise-topbar-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 20px; }
+.noise-topbar-row-second { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.view-toggle { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 12px; background: rgba(10, 11, 19, .5); }
+.view-option {
+  border: 0; border-radius: 9px; padding: 9px 15px;
+  color: var(--muted); background: transparent;
+  font: 700 .76rem/1 var(--sans); cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.view-option:hover:not(.is-active) { color: var(--text); }
+.view-option.is-active { color: #17101f; background: var(--violet); }
+
+/* Solo rumore: una colonna. Confronto: due, ideale a sinistra. */
+.noise-stage-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.noise-stage-view.is-compare { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.noise-stage-view.is-compare .circuit-svg { min-width: 620px; }
+
+/* Il dettaglio resta chiuso: si apre solo se si vuole mettere le mani nei canali. */
+.noise-detail {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.noise-detail > summary {
+  padding: 16px 22px;
+  color: var(--text);
+  font: 700 .84rem/1 var(--sans);
+  cursor: pointer;
+  list-style: none;
+}
+.noise-detail > summary::-webkit-details-marker { display: none; }
+.noise-detail > summary::before { content: "▸ "; color: var(--amber); }
+.noise-detail[open] > summary::before { content: "▾ "; }
+.noise-detail > summary:hover { color: var(--amber); }
+.noise-detail .panel { border: 0; background: transparent; }
+@media (max-width: 1100px) {
+  .noise-stage-view.is-compare { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Il simbolo di apertura sta con i preset: si sceglie il tipo di errore e,
+   se serve, si aprono i suoi canali senza spostarsi altrove. */
+.detail-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 38px; min-height: 38px; margin-left: 4px;
+  border: 1px solid var(--line-strong); border-radius: 10px;
+  color: var(--amber); background: rgba(10, 11, 19, .5);
+  font-size: .8rem; cursor: pointer;
+  transition: transform .15s, border-color .15s, background .15s;
+}
+.detail-toggle:hover { border-color: var(--amber); background: var(--amber-soft); }
+.detail-toggle.is-open { transform: rotate(180deg); border-color: var(--amber); background: var(--amber-soft); }
+.noise-detail { margin-top: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.noise-detail[hidden] { display: none; }
+.noise-detail .panel { border: 0; background: transparent; }
+
+/* --- Barra delle schede: resta agganciata, ma si stringe quando lo e' -------
+   Attaccata copriva quasi 90px di circuito. Quando la sentinella qui sopra
+   esce dalla vista, la barra passa a una riga sola: sparisce la descrizione,
+   restano nome e numero. Copre meno della meta'. */
+.tabs-sentinel { height: 1px; margin-bottom: -1px; }
+.tabs { transition: padding .18s ease, border-radius .18s ease, background .18s ease; }
+.tabs.is-stuck {
+  padding: 3px;
+  border-radius: 13px;
+  background: rgba(12, 13, 23, .95);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .38);
+}
+.tabs.is-stuck .tab { gap: 9px; padding: 7px 14px; }
+.tabs.is-stuck .tab small { display: none; }
+.tabs.is-stuck .tab strong { font-size: .82rem; }
+.tabs.is-stuck .tab-index { font-size: .62rem; }
+@media (prefers-reduced-motion: reduce) { .tabs { transition: none; } }

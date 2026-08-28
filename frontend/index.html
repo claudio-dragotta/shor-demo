@@ -16,6 +16,7 @@
       <h1>Dal circuito ideale al <em>rumore quantistico</em></h1>
     </header>
 
+    <div class="tabs-sentinel" aria-hidden="true"></div>
     <nav class="tabs" role="tablist" aria-label="Sezioni della demo">
       <button class="tab is-active" id="idealTab" type="button" role="tab" aria-selected="true" aria-controls="idealPanel" tabindex="0" data-tab="ideal">
         <span class="tab-index">01</span>
@@ -127,16 +128,62 @@
       </section>
 
       <section class="tab-panel" id="noisePanel" role="tabpanel" aria-labelledby="noiseTab" hidden>
-        <section class="panel control-panel" aria-labelledby="noiseControlsTitle">
-          <div class="section-heading compact-heading">
-            <div><p class="kicker">Configurazione dell’esperimento</p><h2 id="noiseControlsTitle">Costruisci il modello di rumore</h2></div>
+        <section class="panel noise-topbar" aria-labelledby="noiseTopTitle">
+          <div class="noise-topbar-row">
+            <div>
+              <p class="kicker">Rumore su N = 15</p>
+              <h2 id="noiseTopTitle">Modifica il rumore, guarda il circuito</h2>
+            </div>
             <div class="preset-group" role="group" aria-label="Preset del rumore">
               <button class="preset" type="button" data-preset="none" aria-pressed="false">Rumore off</button>
               <button class="preset" type="button" data-preset="readout" aria-pressed="false">Solo readout</button>
               <button class="preset is-active" type="button" data-preset="uc1" aria-pressed="true">UC1 moderato</button>
               <button class="preset" type="button" data-preset="uc2" aria-pressed="false">UC2 stress</button>
               <button class="preset" type="button" data-preset="custom" aria-pressed="false">Personalizzato</button>
+              <button class="detail-toggle" id="noiseDetailBtn" type="button" aria-expanded="false" aria-controls="noiseDetail"
+                      title="Dettaglio dei canali e cosa posso modificare">
+                <span aria-hidden="true">&#9662;</span><span class="sr-only">Apri il dettaglio dei canali</span>
+              </button>
             </div>
+          </div>
+          <div class="noise-topbar-row noise-topbar-row-second">
+            <div class="view-toggle" role="group" aria-label="Modalità di visualizzazione">
+              <button class="view-option is-active" id="viewNoisyBtn" type="button" aria-pressed="true">Solo rumore</button>
+              <button class="view-option" id="viewCompareBtn" type="button" aria-pressed="false">Confronto visivo</button>
+            </div>
+            <div class="stage-nav" role="group" aria-label="Avanzamento fra gli stadi">
+              <button class="icon-button" id="noisePrevBtn" type="button" aria-label="Stadio precedente" title="Stadio precedente">&#9664;</button>
+              <span class="stage-counter" id="noiseStageCounter" aria-live="polite">— / —</span>
+              <button class="icon-button" id="noiseNextBtn" type="button" aria-label="Stadio successivo" title="Stadio successivo">&#9654;</button>
+            </div>
+          </div>
+          <p class="status-line" id="blochStatus" role="status" aria-live="polite">Scegli un preset: le sfere mostrano lo stato dei qubit sotto quel rumore.</p>
+        </section>
+
+        <div class="noise-stage-view" id="noiseStageView">
+          <section class="panel circuit-panel" id="idealCirclePanel" hidden aria-labelledby="idealCircuitTitle">
+            <div class="section-heading circuit-heading">
+              <div><p class="kicker">Senza rumore</p><h2 id="idealCircuitTitle">Riferimento ideale</h2></div>
+            </div>
+            <div class="circuit-scroller" tabindex="0" aria-label="Circuito ideale di riferimento">
+              <svg id="idealCircuitSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img"></svg>
+            </div>
+          </section>
+          <section class="panel circuit-panel" aria-labelledby="noisyCircuitTitle">
+            <div class="section-heading circuit-heading">
+              <div><p class="kicker" id="noisyCircuitKicker">Sotto rumore</p><h2 id="noisyCircuitTitle">Stato dei qubit di conteggio</h2></div>
+              <span class="stage-chip" id="noiseStageChip">Stadio —</span>
+            </div>
+            <div class="circuit-scroller" tabindex="0" aria-label="Circuito sotto rumore">
+              <svg id="noisyCircuitSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img"></svg>
+            </div>
+          </section>
+        </div>
+
+        <div class="noise-detail" id="noiseDetail" hidden>
+        <section class="panel control-panel" aria-labelledby="noiseControlsTitle">
+          <div class="section-heading compact-heading">
+            <div><p class="kicker">Configurazione dell’esperimento</p><h2 id="noiseControlsTitle">Costruisci il modello di rumore</h2></div>
           </div>
 
           <fieldset id="experimentControls" class="experiment-fieldset">
@@ -184,6 +231,73 @@
           <div class="snapshot" id="configSnapshot" aria-live="polite">Configurazione pronta: UC1 · 512 shot · seed 42 bloccato.</div>
           <p class="status-line" id="experimentStatus" role="status" aria-live="polite">Avvia il confronto per generare i dati.</p>
         </section>
+
+        <section class="panel anatomy-panel" aria-labelledby="anatomyTitle">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="kicker">Dove entra il rumore</p>
+              <h2 id="anatomyTitle">Su quante porte agisce ciascun errore</h2>
+            </div>
+            <span class="anatomy-scope" id="anatomyScope">—</span>
+          </div>
+          <p class="panel-intro">Il modello è <strong>uniforme</strong>: ogni qubit ha gli stessi parametri, non è la calibrazione di una QPU reale. Quello che cambia muovendo i cursori è su quante porte l’errore agisce e quanto pesa.</p>
+          <div class="anatomy-scroller" tabindex="0" aria-label="Schema del circuito compilato con i canali di errore; scorri orizzontalmente sui display piccoli">
+            <svg id="anatomySvg" class="anatomy-svg" viewBox="0 0 900 300" role="img" aria-labelledby="anatomySvgTitle anatomySvgDesc">
+              <title id="anatomySvgTitle">Dove entra il rumore nel circuito compilato</title>
+              <desc id="anatomySvgDesc">Due fili di qubit attraversano una porta sx, una cx, una rotazione rz e la misura. Sotto ogni porta è indicato il canale di errore che vi agisce e quante volte compare nel circuito.</desc>
+
+              <text x="16" y="96" class="ana-wire-label">qᵢ</text>
+              <text x="16" y="176" class="ana-wire-label">qⱼ</text>
+              <line x1="46" y1="90" x2="880" y2="90" class="ana-wire"/>
+              <line x1="46" y1="170" x2="880" y2="170" class="ana-wire"/>
+
+              <g id="anaSx" class="ana-slot">
+                <rect x="108" y="66" width="56" height="48" rx="9" class="ana-gate"/>
+                <text x="136" y="96" class="ana-gate-text">SX</text>
+                <line x1="136" y1="114" x2="136" y2="206" class="ana-link"/>
+                <text x="136" y="228" class="ana-cap">depolarizzazione 1Q</text>
+                <text x="136" y="248" class="ana-cap ana-cap-dim">+ termico + sovrarotazione</text>
+                <text x="136" y="272" class="ana-count" id="anaSxCount">—</text>
+              </g>
+
+              <g id="anaCx" class="ana-slot">
+                <circle cx="330" cy="90" r="9" class="ana-ctrl"/>
+                <line x1="330" y1="90" x2="330" y2="170" class="ana-cxline"/>
+                <circle cx="330" cy="170" r="17" class="ana-target"/>
+                <line x1="313" y1="170" x2="347" y2="170" class="ana-cross"/>
+                <line x1="330" y1="153" x2="330" y2="187" class="ana-cross"/>
+                <line x1="330" y1="187" x2="330" y2="206" class="ana-link"/>
+                <text x="330" y="228" class="ana-cap">depolarizzazione 2Q</text>
+                <text x="330" y="248" class="ana-cap ana-cap-dim">+ termico · il canale fragile</text>
+                <text x="330" y="272" class="ana-count" id="anaCxCount">—</text>
+              </g>
+
+              <g id="anaRz" class="ana-slot is-virtual">
+                <rect x="524" y="66" width="56" height="48" rx="9" class="ana-gate"/>
+                <text x="552" y="96" class="ana-gate-text">RZ</text>
+                <line x1="552" y1="114" x2="552" y2="206" class="ana-link"/>
+                <text x="552" y="228" class="ana-cap">nessun rumore</text>
+                <text x="552" y="248" class="ana-cap ana-cap-dim">rotazione virtuale, durata zero</text>
+                <text x="552" y="272" class="ana-count" id="anaRzCount">—</text>
+              </g>
+
+              <g id="anaMeas" class="ana-slot">
+                <rect x="742" y="66" width="56" height="48" rx="9" class="ana-gate"/>
+                <rect x="742" y="146" width="56" height="48" rx="9" class="ana-gate"/>
+                <text x="770" y="96" class="ana-gate-text">M</text>
+                <text x="770" y="176" class="ana-gate-text">M</text>
+                <line x1="770" y1="194" x2="770" y2="206" class="ana-link"/>
+                <text x="770" y="228" class="ana-cap">errore di lettura</text>
+                <text x="770" y="248" class="ana-cap ana-cap-dim">P(1|0) e P(0|1)</text>
+                <text x="770" y="272" class="ana-count" id="anaMeasCount">—</text>
+              </g>
+            </svg>
+          </div>
+          <div class="anatomy-grid" id="anatomyGrid"></div>
+          <p class="anatomy-note">I valori fra parentesi sono <strong>proxy dichiarati</strong>, calcolati sui conteggi del circuito compilato: non sono probabilità di successo dell’algoritmo, né fedeltà del circuito.</p>
+        </section>
+
+        </div>
 
         <section class="panel results-panel" aria-labelledby="resultsTitle">
           <div class="section-heading">

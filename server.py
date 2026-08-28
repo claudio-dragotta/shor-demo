@@ -135,6 +135,42 @@ def api_ideal_sample(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.get("/api/circuit-cost")
+def api_circuit_cost(N: int = Query(..., ge=2, le=1000)):
+    """Su quante porte agisce ogni canale: alimenta l'anatomia del rumore."""
+    try:
+        return api.circuit_cost(N)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class NoisyBlochRequest(BaseModel):
+    """Sfere di Bloch sotto rumore: solo N=15, l'unica istanza in cui la
+    matrice densita' resta calcolabile (12 qubit, 4096x4096)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    N: Literal[15] = 15
+    noise: NoiseConfig = Field(default_factory=NoiseConfig)
+
+
+@app.post("/api/noisy-bloch")
+def api_noisy_bloch(request: NoisyBlochRequest):
+    """Stato ridotto dei qubit di conteggio a ogni stadio, con e senza rumore."""
+    try:
+        return _with_simulation_slot(
+            lambda: api.noisy_bloch(request.N, request.noise.model_dump())
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except SimulationUnavailable:
+        raise HTTPException(status_code=503, detail="Vista di Bloch temporaneamente non disponibile.")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Errore interno durante il calcolo dello stato.")
+
+
 @app.post("/api/experiment")
 def api_experiment(request: ExperimentRequest):
     """Confronta la baseline ideale con lo stesso circuito sotto i canali scelti."""

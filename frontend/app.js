@@ -16,6 +16,10 @@
     instance: INSTANCES[15],
     ideal: { info: null, stage: 0, bloch: null, controller: null, requestId: 0, playing: false, timer: null, classical: null },
     experiment: { controller: null, requestId: 0, running: false, preset: "uc1", hasResult: false },
+    cost: null,
+    // Vista di Bloch sotto rumore: sempre N=15, l'unica istanza in cui la
+    // matrice densita' resta calcolabile.
+    bloch: { info: null, noisy: null, ideal: null, stage: 0, mode: "noisy", loading: false, token: 0 },
   };
 
   function currentInstance() {
@@ -415,8 +419,8 @@
     return `hsl(${hue} 78% 68%)`;
   }
 
-  function renderCircuit(info, bloch) {
-    const svg = $("circuitSvg");
+  function renderCircuit(info, bloch, targetId = "circuitSvg") {
+    const svg = $(targetId);
     const instance = currentInstance();
     clearSvg(
       svg,
@@ -642,6 +646,206 @@
     }
   }
 
+  // --- Anatomia del rumore -------------------------------------------------
+  // Il modello e' uniforme su tutti i qubit: cio' che cambia muovendo un cursore
+  // e' su quante porte l'errore agisce e quanto pesa. I conteggi vengono dal
+  // circuito compilato nella base rz/sx/x/cx, non da una stima.
+  async function loadCircuitCost(N) {
+    state.cost = null;
+    updateNoiseAnatomy();
+    try {
+      state.cost = await apiJSON(`/api/circuit-cost?N=${N}`);
+    } catch (error) {
+      state.cost = null;
+    }
+    updateNoiseAnatomy();
+  }
+
+  function formatProxy(value) {
+    if (!Number.isFinite(value)) return "—";
+    if (value === 1) return "1";
+    if (value >= 0.001) return numberIT(value, 4);
+    const exp = Math.floor(Math.log10(value));
+    return `${numberIT(value / 10 ** exp, 2)}·10^${exp}`;
+  }
+
+  function updateNoiseAnatomy() {
+    const grid = $("anatomyGrid");
+    const cost = state.cost;
+    if (!cost) {
+      grid.replaceChildren();
+      $("anatomyScope").textContent = "conteggi non disponibili";
+      return;
+    }
+    const n = collectNoise();
+    const c = cost.counts;
+    $("anatomyScope").textContent = `N=${cost.N} · ${cost.num_qubits} qubit · profondità ${numberIT(cost.depth, 0)}`;
+
+    const eps1 = Number(n.eps_1q) || 0;
+    const eps2 = Number(n.eps_2q) || 0;
+    const ro01 = Number(n.readout_0to1) || 0;
+    const ro10 = Number(n.readout_1to0) || 0;
+    const over = Number(n.coherent_overrotation_deg) || 0;
+    // Durata illustrativa: le rz sono virtuali e non durano nulla.
+    const durataUs = (c.sx_x * cost.gate_time_1q_ns + c.cx * cost.gate_time_2q_ns) / 1000;
+
+    const righe = [
+      { attivo: eps1 > 0, nome: "Depolarizzazione 1Q", su: `${numberIT(c.sx_x, 0)} porte sx/x`,
+        detta: eps1 > 0
+          ? `proxy di nessun evento 1Q: ${formatProxy((1 - 3 * eps1 / 4) ** c.sx_x)}`
+          : "canale spento" },
+      { attivo: eps2 > 0, nome: "Depolarizzazione 2Q", su: `${numberIT(c.cx, 0)} porte cx`,
+        detta: eps2 > 0
+          ? `proxy di nessun evento 2Q: ${formatProxy((1 - 15 * eps2 / 16) ** c.cx)}`
+          : "canale spento" },
+      { attivo: n.t1_us != null, nome: "Canale termico T₁/T₂", su: `durata ≈ ${numberIT(durataUs, 1)} µs`,
+        detta: n.t1_us != null
+          ? `durata / T₁ = ${numberIT(durataUs / Number(n.t1_us), 3)} · T₂ = ${numberIT(Number(n.t2_us), 0)} µs`
+          : "canale spento" },
+      { attivo: over > 0, nome: "Sovrarotazione coerente", su: `${numberIT(c.sx_x, 0)} porte sx/x`,
+        detta: over > 0 ? `RX(${numberIT(over, 1)}°) dopo ogni sx/x, sempre nello stesso verso` : "canale spento" },
+      { attivo: ro01 > 0 || ro10 > 0, nome: "Errore di lettura", su: `${cost.n_count} bit misurati`,
+        detta: (ro01 > 0 || ro10 > 0)
+          ? `P(1|0) = ${numberIT(ro01 * 100, 2)}% · P(0|1) = ${numberIT(ro10 * 100, 2)}%`
+          : "canale spento" },
+      { attivo: false, virtuale: true, nome: "Rotazioni rz", su: `${numberIT(c.rz, 0)} porte`,
+        detta: "virtuali: nessuna durata, nessun rumore" },
+    ];
+
+    // Lo schema si accende dove il canale e' attivo, e riporta su quante porte agisce.
+    const accendi = (id, on) => $(id).classList.toggle("is-on", Boolean(on));
+    accendi("anaSx", eps1 > 0 || over > 0 || n.t1_us != null);
+    accendi("anaCx", eps2 > 0 || n.t1_us != null);
+    accendi("anaMeas", ro01 > 0 || ro10 > 0);
+    $("anaSxCount").textContent = `${numberIT(c.sx_x, 0)} porte`;
+    $("anaCxCount").textContent = `${numberIT(c.cx, 0)} porte`;
+    $("anaRzCount").textContent = `${numberIT(c.rz, 0)} porte`;
+    $("anaMeasCount").textContent = `${cost.n_count} bit`;
+
+    grid.replaceChildren(...righe.map((r) => {
+      const el = document.createElement("article");
+      el.className = `anatomy-row${r.attivo ? " is-on" : ""}${r.virtuale ? " is-virtual" : ""}`;
+      const nome = document.createElement("strong");
+      nome.textContent = r.nome;
+      const dove = document.createElement("span");
+      dove.className = "anatomy-where";
+      dove.textContent = r.su;
+      const val = document.createElement("span");
+      val.className = "anatomy-value";
+      val.textContent = r.detta;
+      el.append(nome, dove, val);
+      return el;
+    }));
+  }
+
+  // --- Sfere di Bloch sotto rumore -----------------------------------------
+  const BLOCH_N = 15;
+
+  async function ensureBlochInfo() {
+    if (!state.bloch.info) state.bloch.info = await apiJSON(`/api/factor?N=${BLOCH_N}`);
+    return state.bloch.info;
+  }
+
+  async function loadNoisyBloch() {
+    const token = ++state.bloch.token;
+    state.bloch.loading = true;
+    setStatus("blochStatus", "Calcolo lo stato sotto rumore: e' una matrice densita', non un vettore…", "loading");
+    updateBlochButtons();
+    try {
+      const noise = collectNoise();
+      const info = await ensureBlochInfo();
+      const [noisy, ideale] = await Promise.all([
+        apiJSON("/api/noisy-bloch", { method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ N: BLOCH_N, noise }) }),
+        state.bloch.ideal
+          ? Promise.resolve(state.bloch.ideal)
+          : apiJSON("/api/noisy-bloch", { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ N: BLOCH_N, noise: {} }) }),
+      ]);
+      if (token !== state.bloch.token) return;
+      state.bloch.noisy = noisy;
+      state.bloch.ideal = ideale;
+      state.bloch.stage = clamp(state.bloch.stage, 0, noisy.stages.length - 1);
+      if (!info) return;
+      renderBlochStage();
+      setStatus("blochStatus", noisy.noisy
+        ? "Stato calcolato sotto il rumore scelto. Scorri gli stadi: le frecce si accorciano dove il rumore agisce."
+        : "Nessun rumore attivo: le frecce si accorciano solo per l'entanglement.", "success");
+    } catch (error) {
+      if (token !== state.bloch.token) return;
+      setStatus("blochStatus", `Stato non disponibile: ${errorMessage(error)}`, "error");
+    } finally {
+      if (token === state.bloch.token) { state.bloch.loading = false; updateBlochButtons(); }
+    }
+  }
+
+  function updateBlochButtons() {
+    const pronto = Boolean(state.bloch.noisy) && !state.bloch.loading;
+    const ultimo = pronto ? state.bloch.noisy.stages.length - 1 : 0;
+    $("noisePrevBtn").disabled = !pronto || state.bloch.stage === 0;
+    $("noiseNextBtn").disabled = !pronto || state.bloch.stage >= ultimo;
+    $("noiseStageCounter").textContent = pronto ? `${state.bloch.stage + 1} / ${ultimo + 1}` : "— / —";
+  }
+
+  function renderBlochStage() {
+    const info = state.bloch.info;
+    const dati = state.bloch.noisy;
+    if (!info || !dati) return;
+    const idx = clamp(state.bloch.stage, 0, dati.stages.length - 1);
+    const confronto = state.bloch.mode === "compare";
+    $("idealCirclePanel").hidden = !confronto;
+    $("noisyCircuitKicker").textContent = confronto ? "Sotto rumore" : "Stato dei qubit";
+    $("noiseStageChip").textContent = `Stadio ${idx + 1}/${dati.stages.length}`;
+    renderCircuit(info, { ...dati.stages[idx], n_count: dati.n_count }, "noisyCircuitSvg");
+    if (confronto && state.bloch.ideal) {
+      const rif = state.bloch.ideal.stages[idx];
+      renderCircuit(info, { ...rif, n_count: state.bloch.ideal.n_count }, "idealCircuitSvg");
+    }
+    updateBlochButtons();
+  }
+
+  function setBlochStage(next) {
+    if (!state.bloch.noisy) return;
+    state.bloch.stage = clamp(next, 0, state.bloch.noisy.stages.length - 1);
+    renderBlochStage();
+  }
+
+  function setBlochMode(mode) {
+    state.bloch.mode = mode;
+    $("viewNoisyBtn").classList.toggle("is-active", mode === "noisy");
+    $("viewCompareBtn").classList.toggle("is-active", mode === "compare");
+    $("viewNoisyBtn").setAttribute("aria-pressed", String(mode === "noisy"));
+    $("viewCompareBtn").setAttribute("aria-pressed", String(mode === "compare"));
+    $("noiseStageView").classList.toggle("is-compare", mode === "compare");
+    renderBlochStage();
+  }
+
+  // La barra delle schede resta agganciata, ma attaccata copriva il circuito.
+  // Una sentinella alta 1px dice quando la barra ha lasciato il flusso: da li'
+  // si stringe a una riga sola. Niente listener di scroll: un observer basta.
+  function setupStickyTabs() {
+    const sentinella = document.querySelector(".tabs-sentinel");
+    const barra = document.querySelector(".tabs");
+    if (!sentinella || !barra || typeof IntersectionObserver !== "function") return;
+    new IntersectionObserver(
+      ([entry]) => barra.classList.toggle("is-stuck", !entry.isIntersecting),
+      { threshold: 0 },
+    ).observe(sentinella);
+  }
+
+  function setupBlochView() {
+    $("noiseDetailBtn").addEventListener("click", () => {
+      const aperto = $("noiseDetail").hidden;
+      $("noiseDetail").hidden = !aperto;
+      $("noiseDetailBtn").setAttribute("aria-expanded", String(aperto));
+      $("noiseDetailBtn").classList.toggle("is-open", aperto);
+    });
+    $("viewNoisyBtn").addEventListener("click", () => setBlochMode("noisy"));
+    $("viewCompareBtn").addEventListener("click", () => setBlochMode("compare"));
+    $("noisePrevBtn").addEventListener("click", () => setBlochStage(state.bloch.stage - 1));
+    $("noiseNextBtn").addEventListener("click", () => setBlochStage(state.bloch.stage + 1));
+  }
+
   function refreshNoiseUI() {
     constrainThermalTimes();
     Object.keys(CHANNELS).forEach((key) => {
@@ -663,6 +867,7 @@
     $("newRealizationBtn").disabled = $("seedLockInput").checked;
     updateShotBudget();
     updateSnapshot();
+    updateNoiseAnatomy();
   }
 
   function markCustom() {
@@ -683,6 +888,11 @@
   function applyPreset(name) {
     if (!PRESETS[name]) { markCustom(); return; }
     state.experiment.preset = name;
+    // constrainThermalTimes stringe il max di T2 in base a T1, e un input range
+    // tronca il proprio valore al max. Con il tetto del preset precedente ancora
+    // in vigore, assegnare il nuovo T2 lo troncherebbe: con T1 a 10 us il tetto
+    // e' 20, e UC1 arriverebbe con T2=20 invece di 80. Si riapre prima di scrivere.
+    channelElements("t2_us").input.max = "300";
     Object.entries(PRESETS[name]).forEach(([key, value]) => {
       const { input, toggle } = channelElements(key);
       input.value = String(value);
@@ -696,6 +906,7 @@
       button.setAttribute("aria-pressed", String(active));
     });
     refreshNoiseUI();
+    loadNoisyBloch();
     setStatus("experimentStatus", `${PRESET_LABELS[name]} caricato. Avvia il confronto per applicarlo.`);
   }
 
@@ -1042,6 +1253,7 @@
       setStatus("experimentStatus", `Istanza N=${N} selezionata. Avvia il confronto per generare nuovi dati.`);
     }
     initIdeal();
+    loadCircuitCost(N);
   }
 
   function setupInstanceControl() {
@@ -1073,6 +1285,10 @@
     setupTabs();
     setupIdealControls();
     setupResultPopup();
+    setupBlochView();
+    setupStickyTabs();
+    loadCircuitCost(state.instance.N);
+    loadNoisyBloch();
     setupNoiseControls();
     setupInstanceControl();
     resetPipeline();

@@ -386,10 +386,103 @@ def run_pair_isolated(
     return result
 
 
-def _worker_main() -> int:
+def _bloch_stages(payload: dict[str, Any]) -> dict[str, Any]:
+    """Vettori di Bloch dei qubit di conteggio, stadio per stadio, sotto rumore.
+
+    Sotto rumore lo stato non e' piu' un vettore: e' una matrice densita'. Il
+    vettore del singolo qubit si accorcia sia per l'entanglement sia per la
+    decoerenza, ed e' esattamente cio' che si vuole far vedere.
+
+    Una sola esecuzione copre tutti gli stadi: si compone il circuito per
+    tratti e si salva la densita' RIDOTTA di ogni qubit di conteggio a ogni
+    confine di stadio. Salvare la densita' completa (4096x4096) sei volte
+    costerebbe gigabyte; queste sono matrici 2x2.
+    """
+    import numpy as np
+    from qiskit import QuantumCircuit, transpile
+    from qiskit_aer import AerSimulator
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import api_backend as api
+
+    N = int(payload["N"])
+    noise = dict(payload["noise"])
+    instance = instance_config(N)
+    n_count = instance["n_count"]
+    base = api._instance_circuit(N)
+    stages = api._instance_stages(N)
+
+    model = build_illustrative_noise_model(noise) if noise_is_active(noise) else None
+    simulator = AerSimulator(method="density_matrix", noise_model=model)
+
+    full = QuantumCircuit(base.num_qubits)
+    start = 0
+    for index, stage in enumerate(stages):
+        chunk = QuantumCircuit(base.num_qubits)
+        for inst in base.data[start:stage["end"]]:
+            if inst.operation.name.lower() in ("barrier", "measure"):
+                continue
+            chunk.append(inst.operation, inst.qubits)
+        start = stage["end"]
+        if chunk.data:
+            full.compose(
+                transpile(chunk, basis_gates=BASIS_GATES, optimization_level=2,
+                          seed_transpiler=SEED_TRANSPILER),
+                inplace=True,
+            )
+        for q in range(n_count):
+            full.save_density_matrix(qubits=[q], label=f"s{index}q{q}")
+
+    data = simulator.run(full).result().data()
+    out = []
+    for index in range(len(stages)):
+        qubits = []
+        for q in range(n_count):
+            rho = np.asarray(data[f"s{index}q{q}"])
+            x = float(2 * rho[0, 1].real)
+            y = float(-2 * rho[0, 1].imag)
+            z = float((rho[0, 0] - rho[1, 1]).real)
+            qubits.append({
+                "i": q, "x": x, "y": y, "z": z,
+                "len": float(min(1.0, (x * x + y * y + z * z) ** 0.5)),
+                "ket": api._ket_label(x, y, z),   # stessa etichetta della vista ideale
+            })
+        out.append({"stage": index, "label": stages[index]["label"],
+                    "kind": stages[index]["kind"], "qubits": qubits})
+    return {"ok": True, "N": N, "n_count": n_count, "noisy": bool(model), "stages": out}
+
+
+def run_bloch_isolated(*, N: int, noise: dict[str, Any],
+                       timeout_seconds: float = 180.0) -> dict[str, Any]:
+    """Come run_pair_isolated: Aer resta fuori dal worker ASGI."""
+    instance_config(N)   # solo le istanze validate
+    run_id = uuid.uuid4().hex[:12]
+    try:
+        process = subprocess.run(
+            [sys.executable, os.path.abspath(__file__), "--bloch"],
+            input=json.dumps({"N": N, "noise": noise}),
+            capture_output=True, text=True, timeout=timeout_seconds, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        LOGGER.error("Bloch worker %s non disponibile: %s", run_id, type(exc).__name__)
+        raise SimulationUnavailable("Vista di Bloch temporaneamente non disponibile.") from exc
+    if process.returncode != 0:
+        LOGGER.error("Bloch worker %s uscito con %s: %s", run_id, process.returncode,
+                     process.stderr[-4000:].strip())
+        raise SimulationUnavailable("Vista di Bloch temporaneamente non disponibile.")
+    try:
+        result = json.loads(process.stdout)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise SimulationUnavailable("Vista di Bloch temporaneamente non disponibile.") from exc
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        raise SimulationUnavailable("Vista di Bloch temporaneamente non disponibile.")
+    return result
+
+
+def _worker_main(bloch: bool = False) -> int:
     try:
         payload = json.loads(sys.stdin.read())
-        result = _simulate(payload)
+        result = _bloch_stages(payload) if bloch else _simulate(payload)
     except Exception:
         # Il traceback resta nello stderr catturato dal server; non entra mai nel JSON pubblico.
         traceback.print_exc(file=sys.stderr)
@@ -402,5 +495,8 @@ def _worker_main() -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--worker", action="store_true")
+    parser.add_argument("--bloch", action="store_true")
     args = parser.parse_args()
+    if args.bloch:
+        raise SystemExit(_worker_main(bloch=True))
     raise SystemExit(_worker_main() if args.worker else 2)

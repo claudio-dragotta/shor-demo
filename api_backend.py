@@ -33,6 +33,7 @@ from experiment_backend import (
     N_FIXED,
     SimulationUnavailable,
     instance_config,
+    run_bloch_isolated,
     run_pair_isolated,
 )
 
@@ -155,6 +156,63 @@ def _live_noise_scope(N: int) -> str:
 # ---------------------------------------------------------------------------
 # Fattorizzazione: pre-processing classico + metadati del circuito
 # ---------------------------------------------------------------------------
+@lru_cache(maxsize=None)
+def circuit_cost(N: int) -> dict:
+    """Conteggi di porte del circuito compilato, per l'anatomia del rumore.
+
+    Serve a mostrare su quante porte agisce ciascun canale senza far girare
+    Aer. La transpilazione e' deterministica (stesso seed, stessa base) e qui
+    e' memoizzata: si paga una volta per istanza.
+
+    Le ``rz`` sono aggiornamenti virtuali del frame: nessuna durata, nessun
+    rumore. Vanno mostrate proprio per questo -- sono la maggioranza delle
+    porte e non contribuiscono all'errore.
+    """
+    from qiskit import transpile
+    from experiment_backend import BASIS_GATES, SEED_TRANSPILER
+
+    instance = instance_config(N, allow_free=True)
+    compiled = transpile(
+        _instance_circuit(N),
+        basis_gates=BASIS_GATES,
+        optimization_level=2,
+        seed_transpiler=SEED_TRANSPILER,
+    )
+    ops = {str(k): int(v) for k, v in compiled.count_ops().items()}
+    return {
+        "N": N,
+        "n_count": instance["n_count"],
+        "num_qubits": int(compiled.num_qubits),
+        "depth": int(compiled.depth()),
+        "basis_gates": list(BASIS_GATES),
+        "seed_transpiler": SEED_TRANSPILER,
+        "counts": {
+            "cx": ops.get("cx", 0),
+            "sx_x": ops.get("sx", 0) + ops.get("x", 0),
+            "rz": ops.get("rz", 0),
+            "measure": ops.get("measure", 0),
+        },
+        "gate_time_1q_ns": GATE_TIME_1Q_NS,
+        "gate_time_2q_ns": GATE_TIME_2Q_NS,
+    }
+
+
+@lru_cache(maxsize=24)
+def _noisy_bloch_cached(N: int, noise_key: tuple) -> dict:
+    return run_bloch_isolated(N=N, noise=dict(noise_key))
+
+
+def noisy_bloch(N: int, noise: dict | None = None) -> dict:
+    """Sfere di Bloch sotto rumore, tutte gli stadi in una simulazione sola.
+
+    Costa una ventina di secondi: e' una matrice densita', non uno statevector.
+    Per questo e' memoizzata sulla configurazione di rumore -- i quattro preset
+    si pagano una volta ciascuno, poi sono immediati.
+    """
+    config = normalise_noise_config(noise)
+    return _noisy_bloch_cached(N, tuple(sorted(config.items())))
+
+
 def _classical_outcome(outcome: dict) -> dict:
     """Shor si e' fermato prima del circuito.
 
