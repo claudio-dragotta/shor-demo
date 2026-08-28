@@ -625,3 +625,7 @@ footer p { margin: 0; }
 .tabs.is-stuck .tab strong { font-size: .82rem; }
 .tabs.is-stuck .tab-index { font-size: .62rem; }
 @media (prefers-reduced-motion: reduce) { .tabs { transition: none; } }
+
+/* Terza tinta del popup: il riepilogo del rumore non e' un successo ne' un
+   fallimento, e' una constatazione. */
+.result-popup.is-info .result-popup-card h2 { color: var(--amber); }

@@ -33,6 +33,8 @@ from experiment_backend import (
     N_FIXED,
     SimulationUnavailable,
     instance_config,
+    noise_is_active,
+    quantum_noise_is_active,
     run_bloch_isolated,
     run_pair_isolated,
 )
@@ -203,14 +205,24 @@ def _noisy_bloch_cached(N: int, noise_key: tuple) -> dict:
 
 
 def noisy_bloch(N: int, noise: dict | None = None) -> dict:
-    """Sfere di Bloch sotto rumore, tutte gli stadi in una simulazione sola.
+    """Sfere di Bloch sotto rumore, tutti gli stadi in una simulazione sola.
 
-    Costa una ventina di secondi: e' una matrice densita', non uno statevector.
+    Costa una decina di secondi: e' una matrice densita', non uno statevector.
     Per questo e' memoizzata sulla configurazione di rumore -- i quattro preset
     si pagano una volta ciascuno, poi sono immediati.
+
+    L'errore di lettura viene azzerato prima di simulare: agisce sull'esito
+    della misura, non sull'evoluzione dello stato, quindi lascerebbe la matrice
+    densita' identica. Simularlo costerebbe una ventina di secondi per mostrare
+    esattamente le sfere ideali. Il chiamante lo sa dal campo readout_only.
     """
     config = normalise_noise_config(noise)
-    return _noisy_bloch_cached(N, tuple(sorted(config.items())))
+    quantistico = {**config, "readout_0to1": 0.0, "readout_1to0": 0.0}
+    solo_lettura = noise_is_active(config) and not quantum_noise_is_active(config)
+    result = dict(_noisy_bloch_cached(N, tuple(sorted(quantistico.items()))))
+    result["readout_only"] = bool(solo_lettura)
+    result["noisy"] = bool(quantum_noise_is_active(config))
+    return result
 
 
 def _classical_outcome(outcome: dict) -> dict:

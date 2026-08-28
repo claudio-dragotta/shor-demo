@@ -135,7 +135,6 @@
               <h2 id="noiseTopTitle">Modifica il rumore, guarda il circuito</h2>
             </div>
             <div class="preset-group" role="group" aria-label="Preset del rumore">
-              <button class="preset" type="button" data-preset="none" aria-pressed="false">Rumore off</button>
               <button class="preset" type="button" data-preset="readout" aria-pressed="false">Solo readout</button>
               <button class="preset is-active" type="button" data-preset="uc1" aria-pressed="true">UC1 moderato</button>
               <button class="preset" type="button" data-preset="uc2" aria-pressed="false">UC2 stress</button>
@@ -151,6 +150,7 @@
               <button class="view-option is-active" id="viewNoisyBtn" type="button" aria-pressed="true">Solo rumore</button>
               <button class="view-option" id="viewCompareBtn" type="button" aria-pressed="false">Confronto visivo</button>
             </div>
+            <button class="button button-primary" id="noisePlayBtn" type="button">Avvia automatico</button>
             <div class="stage-nav" role="group" aria-label="Avanzamento fra gli stadi">
               <button class="icon-button" id="noisePrevBtn" type="button" aria-label="Stadio precedente" title="Stadio precedente">&#9664;</button>
               <span class="stage-counter" id="noiseStageCounter" aria-live="polite">— / —</span>

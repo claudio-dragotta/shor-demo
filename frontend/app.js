@@ -19,7 +19,7 @@
     cost: null,
     // Vista di Bloch sotto rumore: sempre N=15, l'unica istanza in cui la
     // matrice densita' resta calcolabile.
-    bloch: { info: null, noisy: null, ideal: null, stage: 0, mode: "noisy", loading: false, token: 0 },
+    bloch: { info: null, noisy: null, ideal: null, stage: 0, mode: "noisy", loading: false, token: 0, playing: false, timer: null },
   };
 
   function currentInstance() {
@@ -37,10 +37,6 @@
   }
 
   const PRESETS = {
-    none: {
-      eps_1q: 0, eps_2q: 0, t1_us: 100, t2_us: 80,
-      readout_0to1: 0, readout_1to0: 0, coherent_overrotation_deg: 0,
-    },
     readout: {
       eps_1q: 0, eps_2q: 0, t1_us: 100, t2_us: 80,
       readout_0to1: 0.02, readout_1to0: 0.02, coherent_overrotation_deg: 0,
@@ -55,7 +51,7 @@
     },
   };
 
-  const PRESET_LABELS = Object.freeze({ none: "Rumore off", readout: "Solo readout", uc1: "UC1 moderato", uc2: "UC2 stress", custom: "Personalizzato" });
+  const PRESET_LABELS = Object.freeze({ readout: "Solo readout", uc1: "UC1 moderato", uc2: "UC2 stress", custom: "Personalizzato" });
   const QUANTUM_NOISE_CHANNELS = Object.freeze(["eps_1q", "eps_2q", "t1_us", "t2_us", "coherent_overrotation_deg"]);
 
   const CHANNELS = {
@@ -565,10 +561,10 @@
     resultPopupOpener = null;
   }
 
-  function showResultPopup(success, title, detail) {
+  function showResultPopup(success, title, detail, variante = null, occhiello = null) {
     const popup = $("resultPopup");
-    popup.className = `result-popup ${success ? "is-success" : "is-failure"}`;
-    $("resultPopupKicker").textContent = success ? "Fattori trovati" : "Shot non risolutivo";
+    popup.className = `result-popup ${variante || (success ? "is-success" : "is-failure")}`;
+    $("resultPopupKicker").textContent = occhiello || (success ? "Fattori trovati" : "Shot non risolutivo");
     $("resultPopupTitle").textContent = title;
     $("resultPopupDetail").textContent = detail;
     if (popup.hidden) resultPopupOpener = document.activeElement;
@@ -741,36 +737,73 @@
   // --- Sfere di Bloch sotto rumore -----------------------------------------
   const BLOCH_N = 15;
 
+  // Il readout agisce sull'esito della misura, non sull'evoluzione: se e' l'unico
+  // canale attivo lo stato resta quello ideale e non serve simulare due volte.
+  function quantumNoiseAttivo(noise) {
+    return Number(noise.eps_1q) > 0 || Number(noise.eps_2q) > 0
+      || noise.t1_us != null || Math.abs(Number(noise.coherent_overrotation_deg) || 0) > 0;
+  }
+
   async function ensureBlochInfo() {
     if (!state.bloch.info) state.bloch.info = await apiJSON(`/api/factor?N=${BLOCH_N}`);
     return state.bloch.info;
   }
 
-  async function loadNoisyBloch() {
+  // Il server ammette UNA simulazione per volta e rifiuta le altre con 429.
+  // Le richieste vengono quindi incatenate: mai due in volo, e una richiesta
+  // gia' superata da un preset piu' recente salta del tutto la rete.
+  let codaBloch = Promise.resolve();
+
+  function loadNoisyBloch() {
     const token = ++state.bloch.token;
+    stopNoisePlayback();
     state.bloch.loading = true;
-    setStatus("blochStatus", "Calcolo lo stato sotto rumore: e' una matrice densita', non un vettore…", "loading");
+    setStatus("blochStatus", "Calcolo lo stato sotto rumore: e' una matrice densita', non un vettore. La prima volta per ogni preset richiede una decina di secondi, poi resta in cache…", "loading");
     updateBlochButtons();
+    const noise = collectNoise();
+    codaBloch = codaBloch.then(() => eseguiCaricamentoBloch(token, noise)).catch(() => {});
+    return codaBloch;
+  }
+
+  async function eseguiCaricamentoBloch(token, noise) {
+    if (token !== state.bloch.token) return;   // superata mentre era in coda
     try {
-      const noise = collectNoise();
       const info = await ensureBlochInfo();
-      const [noisy, ideale] = await Promise.all([
-        apiJSON("/api/noisy-bloch", { method: "POST", headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ N: BLOCH_N, noise }) }),
-        state.bloch.ideal
-          ? Promise.resolve(state.bloch.ideal)
-          : apiJSON("/api/noisy-bloch", { method: "POST", headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify({ N: BLOCH_N, noise: {} }) }),
-      ]);
+      // Il semaforo puo' essere occupato da un esperimento avviato dall'altra
+      // meta' della scheda: in quel caso si aspetta, non si fallisce.
+      const chiedi = async (payload) => {
+        for (let tentativo = 0; ; tentativo += 1) {
+          try {
+            return await apiJSON("/api/noisy-bloch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ N: BLOCH_N, noise: payload }),
+            });
+          } catch (error) {
+            const occupato = /gia' in esecuzione|già in esecuzione/i.test(String(error?.message || ""));
+            if (!occupato || tentativo >= 5 || token !== state.bloch.token) throw error;
+            setStatus("blochStatus", "Simulatore occupato da un altro calcolo: attendo…", "loading");
+            await new Promise((r) => window.setTimeout(r, 2500));
+          }
+        }
+      };
+      const ideale = state.bloch.ideal || await chiedi({});
       if (token !== state.bloch.token) return;
-      state.bloch.noisy = noisy;
+      const quantistico = quantumNoiseAttivo(noise);
+      const noisy = quantistico ? await chiedi(noise) : ideale;
+      if (token !== state.bloch.token) return;
+      const soloLettura = !quantistico
+        && (Number(noise.readout_0to1) > 0 || Number(noise.readout_1to0) > 0);
       state.bloch.ideal = ideale;
+      state.bloch.noisy = { ...noisy, readout_only: soloLettura, noisy: quantistico };
       state.bloch.stage = clamp(state.bloch.stage, 0, noisy.stages.length - 1);
       if (!info) return;
       renderBlochStage();
-      setStatus("blochStatus", noisy.noisy
-        ? "Stato calcolato sotto il rumore scelto. Scorri gli stadi: le frecce si accorciano dove il rumore agisce."
-        : "Nessun rumore attivo: le frecce si accorciano solo per l'entanglement.", "success");
+      setStatus("blochStatus", soloLettura
+        ? "L'errore di lettura agisce sull'esito della misura, non sullo stato: le sfere restano quelle ideali. Il suo effetto si vede nelle statistiche qui sotto."
+        : quantistico
+          ? "Stato calcolato sotto il rumore scelto. Scorri gli stadi: le frecce si accorciano dove il rumore agisce."
+          : "Nessun rumore attivo: le frecce si accorciano solo per l'entanglement.", "success");
     } catch (error) {
       if (token !== state.bloch.token) return;
       setStatus("blochStatus", `Stato non disponibile: ${errorMessage(error)}`, "error");
@@ -782,6 +815,7 @@
   function updateBlochButtons() {
     const pronto = Boolean(state.bloch.noisy) && !state.bloch.loading;
     const ultimo = pronto ? state.bloch.noisy.stages.length - 1 : 0;
+    $("noisePlayBtn").disabled = !pronto;
     $("noisePrevBtn").disabled = !pronto || state.bloch.stage === 0;
     $("noiseNextBtn").disabled = !pronto || state.bloch.stage >= ultimo;
     $("noiseStageCounter").textContent = pronto ? `${state.bloch.stage + 1} / ${ultimo + 1}` : "— / —";
@@ -833,7 +867,67 @@
     ).observe(sentinella);
   }
 
+  // Riproduzione automatica degli stadi nella scheda del rumore.
+  function stopNoisePlayback() {
+    state.bloch.playing = false;
+    if (state.bloch.timer) window.clearTimeout(state.bloch.timer);
+    state.bloch.timer = null;
+    $("noisePlayBtn").textContent = "Avvia automatico";
+  }
+
+  function noisePlaybackStep() {
+    if (!state.bloch.playing || !state.bloch.noisy) return;
+    const ultimo = state.bloch.noisy.stages.length - 1;
+    if (state.bloch.stage >= ultimo) { stopNoisePlayback(); showNoiseSummary(); return; }
+    setBlochStage(state.bloch.stage + 1);
+    if (state.bloch.stage >= ultimo) { stopNoisePlayback(); showNoiseSummary(); return; }
+    state.bloch.timer = window.setTimeout(noisePlaybackStep, 950);
+  }
+
+  function toggleNoisePlayback() {
+    if (state.bloch.playing) { stopNoisePlayback(); return; }
+    if (!state.bloch.noisy) return;
+    state.bloch.playing = true;
+    $("noisePlayBtn").textContent = "Pausa";
+    const ultimo = state.bloch.noisy.stages.length - 1;
+    if (state.bloch.stage >= ultimo) setBlochStage(0);
+    state.bloch.timer = window.setTimeout(noisePlaybackStep, 400);
+  }
+
+  // Riepilogo onesto: nell'ideale alcuni qubit hanno gia' |r|=0 per
+  // entanglement, non per rumore. La decoerenza si misura solo su quelli che
+  // senza rumore restavano puri, altrimenti si sommano due fenomeni diversi.
+  function showNoiseSummary() {
+    const rumoroso = state.bloch.noisy;
+    const ideale = state.bloch.ideal;
+    if (!rumoroso || !ideale) return;
+    const finiRum = rumoroso.stages[rumoroso.stages.length - 1].qubits;
+    const finiId = ideale.stages[ideale.stages.length - 1].qubits;
+    const puri = finiId.map((q, i) => ({ i, id: q.len, rum: finiRum[i]?.len ?? 0 })).filter((q) => q.id > 0.99);
+    const etichetta = PRESET_LABELS[state.experiment.preset] || "Personalizzato";
+
+    if (rumoroso.readout_only) {
+      showResultPopup(true, "Lo stato non cambia",
+        "L'errore di lettura sbaglia il bit al momento della misura, non tocca l'evoluzione del circuito: la matrice densita' resta quella ideale. Il suo effetto si vede nell'istogramma, non nelle sfere.",
+        "is-info", "Solo readout");
+      return;
+    }
+    if (!rumoroso.noisy || !puri.length) {
+      showResultPopup(true, "Nessun rumore attivo",
+        `Le frecce corte che vedi sono entanglement, non decoerenza: ${finiId.length - puri.length} qubit di conteggio sono correlati con il registro di lavoro.`,
+        "is-info", "Riferimento ideale");
+      return;
+    }
+    const media = puri.reduce((acc, q) => acc + q.rum, 0) / puri.length;
+    const minimo = Math.min(...puri.map((q) => q.rum));
+    const massimo = Math.max(...puri.map((q) => q.rum));
+    showResultPopup(false, `|r| da 1,00 a ${numberIT(media, 2)}`,
+      `${etichetta}: ${puri.length} qubit di conteggio erano puri senza rumore. Alla misura il loro vettore di Bloch scende in media a ${numberIT(media, 2)}, fra ${numberIT(minimo, 2)} e ${numberIT(massimo, 2)}. Gli altri ${finiId.length - puri.length} erano gia' a zero per entanglement: quella non e' decoerenza.`,
+      "is-info", "Cosa ha fatto il rumore");
+  }
+
   function setupBlochView() {
+    $("noisePlayBtn").addEventListener("click", toggleNoisePlayback);
     $("noiseDetailBtn").addEventListener("click", () => {
       const aperto = $("noiseDetail").hidden;
       $("noiseDetail").hidden = !aperto;
@@ -842,8 +936,8 @@
     });
     $("viewNoisyBtn").addEventListener("click", () => setBlochMode("noisy"));
     $("viewCompareBtn").addEventListener("click", () => setBlochMode("compare"));
-    $("noisePrevBtn").addEventListener("click", () => setBlochStage(state.bloch.stage - 1));
-    $("noiseNextBtn").addEventListener("click", () => setBlochStage(state.bloch.stage + 1));
+    $("noisePrevBtn").addEventListener("click", () => { stopNoisePlayback(); setBlochStage(state.bloch.stage - 1); });
+    $("noiseNextBtn").addEventListener("click", () => { stopNoisePlayback(); setBlochStage(state.bloch.stage + 1); });
   }
 
   function refreshNoiseUI() {
@@ -896,7 +990,7 @@
     Object.entries(PRESETS[name]).forEach(([key, value]) => {
       const { input, toggle } = channelElements(key);
       input.value = String(value);
-      toggle.checked = name !== "none" && key !== "coherent_overrotation_deg"
+      toggle.checked = key !== "coherent_overrotation_deg"
         && (name !== "readout" || key.startsWith("readout_"));
     });
     setThermalEnabled(name === "uc1" || name === "uc2");
