@@ -9,22 +9,40 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <a class="skip-link" href="#mainContent">Vai al contenuto</a>
+  <a class="skip-link" href="#mainContent" data-i18n="skip">Vai al contenuto</a>
 
   <div class="shell">
     <header class="site-header">
-      <h1>Dal circuito ideale al <em>rumore quantistico</em></h1>
+      <h1 data-i18n-html="header.title">Dal circuito ideale al <em>rumore quantistico</em></h1>
+      <!-- La bandiera mostrata e' quella della lingua ATTIVA; premerla passa all'altra. -->
+      <button class="lang-toggle" id="langToggle" type="button"
+              data-i18n-attr="aria-label:lang.switchTo, title:lang.switchTo">
+        <svg class="flag" id="flagIt" viewBox="0 0 3 2" aria-hidden="true" focusable="false">
+          <rect width="1" height="2" x="0" fill="#008C45"/>
+          <rect width="1" height="2" x="1" fill="#F4F5F0"/>
+          <rect width="1" height="2" x="2" fill="#CD212A"/>
+        </svg>
+        <svg class="flag" id="flagEn" viewBox="0 0 60 30" aria-hidden="true" focusable="false" hidden>
+          <clipPath id="langFlagClip"><path d="M0,0 v30 h60 v-30 z"/></clipPath>
+          <rect width="60" height="30" fill="#012169"/>
+          <path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFF" stroke-width="6"/>
+          <path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#langFlagClip)" stroke="#C8102E" stroke-width="4"/>
+          <path d="M30,0 v30 M0,15 h60" stroke="#FFF" stroke-width="10"/>
+          <path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/>
+        </svg>
+        <span class="lang-code" id="langCode">IT</span>
+      </button>
     </header>
 
     <div class="tabs-sentinel" aria-hidden="true"></div>
-    <nav class="tabs" role="tablist" aria-label="Sezioni della demo">
+    <nav class="tabs" role="tablist" data-i18n-attr="aria-label:tabs.aria">
       <button class="tab is-active" id="idealTab" type="button" role="tab" aria-selected="true" aria-controls="idealPanel" tabindex="0" data-tab="ideal">
         <span class="tab-index">01</span>
-        <span><strong>Simulatore ideale</strong><small>Circuito privo di rumore, misura probabilistica</small></span>
+        <span><strong data-i18n="tab.ideal.name">Simulatore ideale</strong><small data-i18n="tab.ideal.desc">Circuito privo di rumore, misura probabilistica</small></span>
       </button>
       <button class="tab" id="noiseTab" type="button" role="tab" aria-selected="false" aria-controls="noisePanel" tabindex="-1" data-tab="noise">
         <span class="tab-index">02</span>
-        <span><strong>Laboratorio del rumore</strong><small>Errori separati, confronto quantitativo</small></span>
+        <span><strong data-i18n="tab.noise.name">Laboratorio del rumore</strong><small data-i18n="tab.noise.desc">Errori separati, confronto quantitativo</small></span>
       </button>
     </nav>
 
@@ -33,61 +51,61 @@
         <section class="panel control-panel" aria-labelledby="idealControlsTitle">
           <div class="section-heading compact-heading">
             <div>
-              <p class="kicker">Configurazione validata</p>
-              <h2 id="idealControlsTitle">Esplora il circuito, uno stadio alla volta</h2>
+              <p class="kicker" data-i18n="ideal.kicker">Configurazione validata</p>
+              <h2 id="idealControlsTitle" data-i18n="ideal.title">Esplora il circuito, uno stadio alla volta</h2>
             </div>
-            <div class="instance-badges" aria-label="Parametri dell'istanza">
-              <span class="badge-unvalidated" id="unvalidatedBadge" hidden><small>Perimetro</small><b>non validata</b></span>
-              <span><small>Base</small><b id="instanceABadge">a = 7</b></span>
-              <span><small>Conteggio</small><b id="instanceCountBadge">t = 8 qubit</b></span>
+            <div class="instance-badges" data-i18n-attr="aria-label:badges.aria">
+              <span class="badge-unvalidated" id="unvalidatedBadge" hidden><small data-i18n="badge.scope">Perimetro</small><b data-i18n="badge.unvalidated">non validata</b></span>
+              <span><small data-i18n="badge.base">Base</small><b id="instanceABadge">a = 7</b></span>
+              <span><small data-i18n="badge.count">Conteggio</small><b id="instanceCountBadge">t = 8 qubit</b></span>
             </div>
           </div>
 
-          <div class="transport" aria-label="Controlli del circuito">
+          <div class="transport" data-i18n-attr="aria-label:transport.aria">
             <label class="instance-control" for="instanceSelect">
-              <span>Numero da fattorizzare</span>
-              <select id="instanceSelect"><option value="15" selected>15</option><option value="21">21</option><option value="35">35</option><option value="altro">Altro…</option></select>
+              <span data-i18n="ideal.instanceLabel">Numero da fattorizzare</span>
+              <select id="instanceSelect"><option value="15" selected>15</option><option value="21">21</option><option value="35">35</option><option value="altro" data-i18n="ideal.other">Altro…</option></select>
             </label>
             <label class="instance-control" for="customNInput" id="customNField" hidden>
-              <span>Quale</span>
+              <span data-i18n="ideal.whichLabel">Quale</span>
               <input type="number" id="customNInput" min="4" max="47" step="1" placeholder="4–47" inputmode="numeric">
             </label>
-            <button class="button button-primary" id="playStageBtn" type="button">Avvia automatico</button>
-            <button class="button button-secondary" id="stepModeBtn" type="button">Avvia a blocchi</button>
-            <div class="stage-nav" role="group" aria-label="Avanzamento fra gli stadi">
-              <button class="icon-button" id="prevStageBtn" type="button" aria-label="Stadio precedente" title="Stadio precedente">&#9664;</button>
+            <button class="button button-primary" id="playStageBtn" type="button" data-i18n="btn.playAuto">Avvia automatico</button>
+            <button class="button button-secondary" id="stepModeBtn" type="button" data-i18n="btn.stepMode">Avvia a blocchi</button>
+            <div class="stage-nav" role="group" data-i18n-attr="aria-label:stagenav.aria">
+              <button class="icon-button" id="prevStageBtn" type="button" data-i18n-attr="aria-label:btn.prevStage, title:btn.prevStage">&#9664;</button>
               <span class="stage-counter" id="stageNavCounter" aria-live="polite">— / —</span>
-              <button class="icon-button" id="nextStageBtn" type="button" aria-label="Stadio successivo" title="Stadio successivo">&#9654;</button>
+              <button class="icon-button" id="nextStageBtn" type="button" data-i18n-attr="aria-label:btn.nextStage, title:btn.nextStage">&#9654;</button>
             </div>
           </div>
           <div class="classic-notice" id="classicPanel" hidden>
-            <p class="kicker">Non serve il circuito</p>
+            <p class="kicker" data-i18n="classic.kicker">Non serve il circuito</p>
             <p class="classic-result" id="classicTitle">—</p>
             <p id="classicDetail">—</p>
-            <p class="classic-note">Il pre-processing classico di Shor risolve prima di arrivare alla parte quantistica. È il motivo per cui l’algoritmo si applica solo ai numeri che il classico non spezza da solo.</p>
+            <p class="classic-note" data-i18n="classic.note">Il pre-processing classico di Shor risolve prima di arrivare alla parte quantistica. È il motivo per cui l’algoritmo si applica solo ai numeri che il classico non spezza da solo.</p>
           </div>
-          <p class="status-line" id="idealStatus" role="status" aria-live="polite">Preparo il circuito ideale…</p>
+          <p class="status-line" id="idealStatus" role="status" aria-live="polite"></p>
         </section>
 
 
         <div class="ideal-layout">
           <section class="panel circuit-panel" aria-labelledby="circuitTitle">
             <div class="section-heading circuit-heading">
-              <div><p class="kicker">Circuito + stato ridotto</p><h2 id="circuitTitle">Dove siamo e come stanno i qubit</h2></div>
-              <span class="stage-chip" id="stageChip">Stadio —</span>
+              <div><p class="kicker" data-i18n="circuit.kicker">Circuito + stato ridotto</p><h2 id="circuitTitle" data-i18n="circuit.title">Dove siamo e come stanno i qubit</h2></div>
+              <span class="stage-chip" id="stageChip" data-i18n="stageChip.empty">Stadio —</span>
             </div>
-            <div class="circuit-scroller" tabindex="0" aria-label="Circuito quantistico; scorri orizzontalmente sui display piccoli">
+            <div class="circuit-scroller" tabindex="0" data-i18n-attr="aria-label:circuit.scroller.aria">
               <svg id="circuitSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img" aria-labelledby="circuitSvgTitle circuitSvgDesc">
-                <title id="circuitSvgTitle">Circuito ideale di Shor per quindici</title>
-                <desc id="circuitSvgDesc">Otto qubit di conteggio attraversano Hadamard, moltiplicazioni modulari controllate, trasformata di Fourier inversa e misura. Le sfere di Bloch sono mostrate a destra.</desc>
+                <title id="circuitSvgTitle" data-i18n="circuit.svg.title">Circuito ideale di Shor per quindici</title>
+                <desc id="circuitSvgDesc" data-i18n="circuit.svg.desc">Otto qubit di conteggio attraversano Hadamard, moltiplicazioni modulari controllate, trasformata di Fourier inversa e misura. Le sfere di Bloch sono mostrate a destra.</desc>
               </svg>
             </div>
-            <div class="legend" aria-label="Legenda del circuito">
-              <span><i class="legend-dot dot-violet"></i>Hadamard</span>
-              <span><i class="legend-dot dot-amber"></i>stadio attivo</span>
-              <span><i class="legend-dot dot-pink"></i>QFT⁻¹ / fase</span>
-              <span><i class="legend-dot dot-cyan"></i>stato misto</span>
-              <span><i class="legend-symbol">✓/×</i>esito utile / non utile</span>
+            <div class="legend" data-i18n-attr="aria-label:legend.aria">
+              <span><i class="legend-dot dot-violet"></i><span data-i18n="legend.hadamard">Hadamard</span></span>
+              <span><i class="legend-dot dot-amber"></i><span data-i18n="legend.activeStage">stadio attivo</span></span>
+              <span><i class="legend-dot dot-pink"></i><span data-i18n="legend.qft">QFT⁻¹ / fase</span></span>
+              <span><i class="legend-dot dot-cyan"></i><span data-i18n="legend.mixed">stato misto</span></span>
+              <span><i class="legend-symbol">✓/×</i><span data-i18n="legend.outcome">esito utile / non utile</span></span>
             </div>
           </section>
 
@@ -95,34 +113,28 @@
 
         <section class="panel math-panel" aria-labelledby="mathTitle">
           <div class="section-heading">
-            <div><p class="kicker">Post-processing classico</p><h2 id="mathTitle">Dalla misura ai fattori</h2></div>
-            <p class="result-readout"><small>Esito dello shot</small><span class="result-badge" id="pipelineResult">In attesa della misura</span></p>
+            <div><p class="kicker" data-i18n="math.kicker">Post-processing classico</p><h2 id="mathTitle" data-i18n="math.title">Dalla misura ai fattori</h2></div>
+            <p class="result-readout"><small data-i18n="math.shotOutcome">Esito dello shot</small><span class="result-badge" id="pipelineResult" data-i18n="pipeline.waiting">In attesa della misura</span></p>
           </div>
-          <p class="panel-intro">La misura quantistica non restituisce direttamente i fattori: produce un intero <span class="mono">y</span>. Frazione continua, controllo del periodo e MCD completano il calcolo.</p>
-          <ol class="pipeline" id="mathPipeline" aria-live="polite">
-            <li><span>1</span><small>Misura</small><strong>y = —</strong><p>Esito sugli 8 bit classici.</p></li>
-            <li><span>2</span><small>Fase</small><strong>y / 2⁸ = —</strong><p>Stima della fase periodica.</p></li>
-            <li><span>3</span><small>Frazione continua</small><strong>≈ s / r</strong><p>Il denominatore propone l’ordine.</p></li>
-            <li><span>4</span><small>Ordine candidato</small><strong>r = —</strong><p>Deve essere pari e verificabile.</p></li>
-            <li><span>5</span><small>MCD</small><strong>gcd(7ʳᐟ² ± 1, 15)</strong><p>Estrae eventuali divisori non banali.</p></li>
-          </ol>
+          <p class="panel-intro" data-i18n-html="math.intro">La misura quantistica non restituisce direttamente i fattori: produce un intero <span class="mono">y</span>. Frazione continua, controllo del periodo e MCD completano il calcolo.</p>
+          <ol class="pipeline" id="mathPipeline" aria-live="polite"></ol>
         </section>
 
-        <section class="probability-strip" aria-label="Probabilità teoriche ideali">
-          <article><small>Picchi teorici</small><strong id="theoreticalPeaks">0 · 64 · 128 · 192</strong><p id="peakExplanation">Separazione <span class="mono">2⁸ / r = 64</span>, quindi <span class="mono">r=4</span>.</p></article>
-          <article><small>Singolo shot</small><strong id="singleShotProbability">≈ 75%</strong><p id="singleShotExplanation">Tre picchi su quattro permettono di estrarre un fattore; <span class="mono">y=0</span> è sterile.</p></article>
-          <article><small>Entro 2 shot</small><strong id="twoShotProbability">≈ 93,75%</strong><p id="twoShotExplanation"><span class="mono">1 − (1 − 0,75)²</span>: ripetere aumenta rapidamente la probabilità cumulativa.</p></article>
+        <section class="probability-strip" data-i18n-attr="aria-label:prob.aria">
+          <article><small data-i18n="prob.peaks">Picchi teorici</small><strong id="theoreticalPeaks">—</strong><p id="peakExplanation"></p></article>
+          <article><small data-i18n="prob.singleShot">Singolo shot</small><strong id="singleShotProbability">—</strong><p id="singleShotExplanation"></p></article>
+          <article><small data-i18n="prob.twoShot">Entro 2 shot</small><strong id="twoShotProbability">—</strong><p id="twoShotExplanation"></p></article>
         </section>
 
         <aside class="panel explanation-panel" aria-labelledby="stageExplanationTitle">
-          <p class="kicker">Lettura guidata</p>
-          <h2 id="stageExplanationTitle">Stato iniziale</h2>
-          <p id="stageExplanation">I registri partono nello stato computazionale iniziale.</p>
+          <p class="kicker" data-i18n="guide.kicker">Lettura guidata</p>
+          <h2 id="stageExplanationTitle" data-i18n="stage.init0.title">Stato iniziale</h2>
+          <p id="stageExplanation" data-i18n="stage.init0.text">I registri partono nello stato computazionale iniziale.</p>
           <dl class="stage-facts">
-            <div><dt>Operazione</dt><dd id="stageOperation">—</dd></div>
-            <div><dt>Cosa osservare</dt><dd id="stageObserve">—</dd></div>
+            <div><dt data-i18n="stage.facts.operation">Operazione</dt><dd id="stageOperation">—</dd></div>
+            <div><dt data-i18n="stage.facts.observe">Cosa osservare</dt><dd id="stageObserve">—</dd></div>
           </dl>
-          <div class="bloch-note"><strong id="stateViewNoteTitle">Nota sulle sfere</strong><p id="stateViewNote">Mostrano i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro.</p></div>
+          <div class="bloch-note"><strong id="stateViewNoteTitle">Nota sulle sfere</strong><p id="stateViewNote"></p></div>
         </aside>
 
       </section>
@@ -131,50 +143,50 @@
         <section class="panel noise-topbar" aria-labelledby="noiseTopTitle">
           <div class="noise-topbar-row">
             <div>
-              <p class="kicker">Rumore su N = 15</p>
-              <h2 id="noiseTopTitle">Modifica il rumore, guarda il circuito</h2>
+              <p class="kicker" data-i18n="noise.kicker">Rumore su N = 15</p>
+              <h2 id="noiseTopTitle" data-i18n="noise.title">Modifica il rumore, guarda il circuito</h2>
             </div>
-            <div class="preset-group" role="group" aria-label="Preset del rumore">
-              <button class="preset" type="button" data-preset="readout" aria-pressed="false">Solo readout</button>
-              <button class="preset is-active" type="button" data-preset="uc1" aria-pressed="true">UC1 moderato</button>
-              <button class="preset" type="button" data-preset="uc2" aria-pressed="false">UC2 stress</button>
-              <button class="preset" type="button" data-preset="custom" aria-pressed="false">Personalizzato</button>
+            <div class="preset-group" role="group" data-i18n-attr="aria-label:preset.group.aria">
+              <button class="preset" type="button" data-preset="readout" aria-pressed="false" data-i18n="preset.readout">Solo readout</button>
+              <button class="preset is-active" type="button" data-preset="uc1" aria-pressed="true" data-i18n="preset.uc1">UC1 moderato</button>
+              <button class="preset" type="button" data-preset="uc2" aria-pressed="false" data-i18n="preset.uc2">UC2 stress</button>
+              <button class="preset" type="button" data-preset="custom" aria-pressed="false" data-i18n="preset.custom">Personalizzato</button>
               <button class="detail-toggle" id="noiseDetailBtn" type="button" aria-expanded="false" aria-controls="noiseDetail"
-                      title="Dettaglio dei canali e cosa posso modificare">
-                <span aria-hidden="true">&#9662;</span><span class="sr-only">Apri il dettaglio dei canali</span>
+                      data-i18n-attr="title:noise.detailBtn.title">
+                <span aria-hidden="true">&#9662;</span><span class="sr-only" data-i18n="noise.detailBtn.sr">Apri il dettaglio dei canali</span>
               </button>
             </div>
           </div>
           <div class="noise-topbar-row noise-topbar-row-second">
-            <div class="view-toggle" role="group" aria-label="Modalità di visualizzazione">
-              <button class="view-option is-active" id="viewNoisyBtn" type="button" aria-pressed="true">Solo rumore</button>
-              <button class="view-option" id="viewCompareBtn" type="button" aria-pressed="false">Confronto visivo</button>
+            <div class="view-toggle" role="group" data-i18n-attr="aria-label:view.aria">
+              <button class="view-option is-active" id="viewNoisyBtn" type="button" aria-pressed="true" data-i18n="view.noisy">Solo rumore</button>
+              <button class="view-option" id="viewCompareBtn" type="button" aria-pressed="false" data-i18n="view.compare">Confronto visivo</button>
             </div>
-            <button class="button button-primary" id="noisePlayBtn" type="button">Avvia automatico</button>
-            <div class="stage-nav" role="group" aria-label="Avanzamento fra gli stadi">
-              <button class="icon-button" id="noisePrevBtn" type="button" aria-label="Stadio precedente" title="Stadio precedente">&#9664;</button>
+            <button class="button button-primary" id="noisePlayBtn" type="button" data-i18n="btn.playAuto">Avvia automatico</button>
+            <div class="stage-nav" role="group" data-i18n-attr="aria-label:stagenav.aria">
+              <button class="icon-button" id="noisePrevBtn" type="button" data-i18n-attr="aria-label:btn.prevStage, title:btn.prevStage">&#9664;</button>
               <span class="stage-counter" id="noiseStageCounter" aria-live="polite">— / —</span>
-              <button class="icon-button" id="noiseNextBtn" type="button" aria-label="Stadio successivo" title="Stadio successivo">&#9654;</button>
+              <button class="icon-button" id="noiseNextBtn" type="button" data-i18n-attr="aria-label:btn.nextStage, title:btn.nextStage">&#9654;</button>
             </div>
           </div>
-          <p class="status-line" id="blochStatus" role="status" aria-live="polite">Scegli un preset: le sfere mostrano lo stato dei qubit sotto quel rumore.</p>
+          <p class="status-line" id="blochStatus" role="status" aria-live="polite"></p>
         </section>
 
         <div class="noise-stage-view" id="noiseStageView">
           <section class="panel circuit-panel" id="idealCirclePanel" hidden aria-labelledby="idealCircuitTitle">
             <div class="section-heading circuit-heading">
-              <div><p class="kicker">Senza rumore</p><h2 id="idealCircuitTitle">Riferimento ideale</h2></div>
+              <div><p class="kicker" data-i18n="noise.ideal.kicker">Senza rumore</p><h2 id="idealCircuitTitle" data-i18n="noise.ideal.title">Riferimento ideale</h2></div>
             </div>
-            <div class="circuit-scroller" tabindex="0" aria-label="Circuito ideale di riferimento">
+            <div class="circuit-scroller" tabindex="0" data-i18n-attr="aria-label:noise.ideal.scroller.aria">
               <svg id="idealCircuitSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img"></svg>
             </div>
           </section>
           <section class="panel circuit-panel" aria-labelledby="noisyCircuitTitle">
             <div class="section-heading circuit-heading">
-              <div><p class="kicker" id="noisyCircuitKicker">Sotto rumore</p><h2 id="noisyCircuitTitle">Stato dei qubit di conteggio</h2></div>
-              <span class="stage-chip" id="noiseStageChip">Stadio —</span>
+              <div><p class="kicker" id="noisyCircuitKicker" data-i18n="noise.noisy.kicker">Sotto rumore</p><h2 id="noisyCircuitTitle" data-i18n="noise.noisy.title">Stato dei qubit di conteggio</h2></div>
+              <span class="stage-chip" id="noiseStageChip" data-i18n="stageChip.empty">Stadio —</span>
             </div>
-            <div class="circuit-scroller" tabindex="0" aria-label="Circuito sotto rumore">
+            <div class="circuit-scroller" tabindex="0" data-i18n-attr="aria-label:noise.noisy.scroller.aria">
               <svg id="noisyCircuitSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img"></svg>
             </div>
           </section>
@@ -183,68 +195,68 @@
         <div class="noise-detail" id="noiseDetail" hidden>
         <section class="panel control-panel" aria-labelledby="noiseControlsTitle">
           <div class="section-heading compact-heading">
-            <div><p class="kicker">Configurazione dell’esperimento</p><h2 id="noiseControlsTitle">Costruisci il modello di rumore</h2></div>
+            <div><p class="kicker" data-i18n="config.kicker">Configurazione dell’esperimento</p><h2 id="noiseControlsTitle" data-i18n="config.title">Costruisci il modello di rumore</h2></div>
           </div>
 
           <fieldset id="experimentControls" class="experiment-fieldset">
-            <legend class="sr-only">Parametri dell’esperimento rumoroso</legend>
+            <legend class="sr-only" data-i18n="config.legend">Parametri dell’esperimento rumoroso</legend>
             <div class="run-config">
-              <label>Shot<select id="shotsInput"><option value="10">10</option><option value="32">32</option><option value="64">64</option><option value="128">128</option><option value="256">256</option><option value="512" selected>512</option><option value="1024">1024</option><option value="2048">2048</option></select></label>
-              <label>Seed<input id="seedInput" type="number" min="0" max="2147483647" step="1" value="42" inputmode="numeric"></label>
-              <label class="check-control seed-lock"><input id="seedLockInput" type="checkbox" checked><span>Blocca seed</span></label>
-              <button class="button button-secondary" id="newRealizationBtn" type="button">Genera nuovo seed</button>
-              <button class="button button-accent run-experiment" id="runExperimentBtn" type="button">Confronta ideale e rumore</button>
+              <label><span data-i18n="run.shots">Shot</span><select id="shotsInput"><option value="10">10</option><option value="32">32</option><option value="64">64</option><option value="128">128</option><option value="256">256</option><option value="512" selected>512</option><option value="1024">1024</option><option value="2048">2048</option></select></label>
+              <label><span data-i18n="run.seed">Seed</span><input id="seedInput" type="number" min="0" max="2147483647" step="1" value="42" inputmode="numeric"></label>
+              <label class="check-control seed-lock"><input id="seedLockInput" type="checkbox" checked><span data-i18n="run.seedLock">Blocca seed</span></label>
+              <button class="button button-secondary" id="newRealizationBtn" type="button" data-i18n="btn.newSeed">Genera nuovo seed</button>
+              <button class="button button-accent run-experiment" id="runExperimentBtn" type="button" data-i18n="btn.runExperiment">Confronta ideale e rumore</button>
             </div>
 
             <div class="noise-grid">
               <article class="noise-control" data-channel="eps_1q">
-                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span>Depolarizzazione 1Q</span></label><output id="eps1qOutput" for="eps1qInput">0,100%</output></div>
-                <input id="eps1qInput" class="noise-range" type="range" min="0" max="0.02" step="0.0001" value="0.001" aria-label="Probabilità di depolarizzazione 1Q"><p>Errore casuale dopo i gate a un qubit.</p>
+                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span data-i18n="ch.eps_1q.name">Depolarizzazione 1Q</span></label><output id="eps1qOutput" for="eps1qInput">0,100%</output></div>
+                <input id="eps1qInput" class="noise-range" type="range" min="0" max="0.02" step="0.0001" value="0.001" data-i18n-attr="aria-label:ch.eps_1q.aria"><p data-i18n="ch.eps_1q.help">Errore casuale dopo i gate a un qubit.</p>
               </article>
               <article class="noise-control" data-channel="eps_2q">
-                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span>Depolarizzazione 2Q</span></label><output id="eps2qOutput" for="eps2qInput">1,00%</output></div>
-                <input id="eps2qInput" class="noise-range" type="range" min="0" max="0.10" step="0.001" value="0.01" aria-label="Probabilità di depolarizzazione 2Q"><p>Errore sui gate entangling, in genere più fragile.</p>
+                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span data-i18n="ch.eps_2q.name">Depolarizzazione 2Q</span></label><output id="eps2qOutput" for="eps2qInput">1,00%</output></div>
+                <input id="eps2qInput" class="noise-range" type="range" min="0" max="0.10" step="0.001" value="0.01" data-i18n-attr="aria-label:ch.eps_2q.aria"><p data-i18n="ch.eps_2q.help">Errore sui gate entangling, in genere più fragile.</p>
               </article>
               <article class="noise-control" data-channel="t1_us">
-                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span>Canale termico · T₁</span></label><output id="t1Output" for="t1Input">100 µs</output></div>
-                <input id="t1Input" class="noise-range" type="range" min="10" max="300" step="5" value="100" aria-label="Tempo di rilassamento T1 in microsecondi"><p>Rilassamento verso |0⟩; viene attivato insieme a T₂.</p>
+                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span data-i18n="ch.t1_us.name">Canale termico · T₁</span></label><output id="t1Output" for="t1Input">100 µs</output></div>
+                <input id="t1Input" class="noise-range" type="range" min="10" max="300" step="5" value="100" data-i18n-attr="aria-label:ch.t1_us.aria"><p data-i18n="ch.t1_us.help">Rilassamento verso |0⟩; viene attivato insieme a T₂.</p>
               </article>
               <article class="noise-control" data-channel="t2_us">
-                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span>Canale termico · T₂</span></label><output id="t2Output" for="t2Input">80 µs</output></div>
-                <input id="t2Input" class="noise-range" type="range" min="5" max="300" step="5" value="80" aria-label="Tempo di dephasing T2 in microsecondi"><p>Dephasing, attivo insieme a T₁. Vincolo: T₂ ≤ 2T₁.</p>
+                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span data-i18n="ch.t2_us.name">Canale termico · T₂</span></label><output id="t2Output" for="t2Input">80 µs</output></div>
+                <input id="t2Input" class="noise-range" type="range" min="5" max="300" step="5" value="80" data-i18n-attr="aria-label:ch.t2_us.aria"><p data-i18n="ch.t2_us.help">Dephasing, attivo insieme a T₁. Vincolo: T₂ ≤ 2T₁.</p>
               </article>
               <article class="noise-control" data-channel="readout_0to1">
-                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span>Readout 0 → 1</span></label><output id="readout01Output" for="readout01Input">2,00%</output></div>
-                <input id="readout01Input" class="noise-range" type="range" min="0" max="0.15" step="0.001" value="0.02" aria-label="Probabilità di errore di readout da 0 a 1"><p>Probabilità di leggere 1 quando il qubit è 0.</p>
+                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span data-i18n="ch.readout_0to1.name">Readout 0 → 1</span></label><output id="readout01Output" for="readout01Input">2,00%</output></div>
+                <input id="readout01Input" class="noise-range" type="range" min="0" max="0.15" step="0.001" value="0.02" data-i18n-attr="aria-label:ch.readout_0to1.aria"><p data-i18n="ch.readout_0to1.help">Probabilità di leggere 1 quando il qubit è 0.</p>
               </article>
               <article class="noise-control" data-channel="readout_1to0">
-                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span>Readout 1 → 0</span></label><output id="readout10Output" for="readout10Input">2,00%</output></div>
-                <input id="readout10Input" class="noise-range" type="range" min="0" max="0.15" step="0.001" value="0.02" aria-label="Probabilità di errore di readout da 1 a 0"><p>Probabilità di leggere 0 quando il qubit è 1.</p>
+                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox" checked><span data-i18n="ch.readout_1to0.name">Readout 1 → 0</span></label><output id="readout10Output" for="readout10Input">2,00%</output></div>
+                <input id="readout10Input" class="noise-range" type="range" min="0" max="0.15" step="0.001" value="0.02" data-i18n-attr="aria-label:ch.readout_1to0.aria"><p data-i18n="ch.readout_1to0.help">Probabilità di leggere 0 quando il qubit è 1.</p>
               </article>
               <article class="noise-control" data-channel="coherent_overrotation_deg">
-                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox"><span>Sovrarotazione coerente 1Q</span></label><output id="overrotationOutput" for="overrotationInput">0,0°</output></div>
-                <input id="overrotationInput" class="noise-range" type="range" min="0" max="10" step="0.1" value="0" disabled aria-label="Sovrarotazione coerente 1Q in gradi"><p>RX(δ) aggiunta dopo SX/X; le RZ virtuali restano ideali.</p>
+                <div class="noise-title"><label class="switch-label"><input class="channel-toggle" type="checkbox"><span data-i18n="ch.coherent_overrotation_deg.name">Sovrarotazione coerente 1Q</span></label><output id="overrotationOutput" for="overrotationInput">0,0°</output></div>
+                <input id="overrotationInput" class="noise-range" type="range" min="0" max="10" step="0.1" value="0" disabled data-i18n-attr="aria-label:ch.coherent_overrotation_deg.aria"><p data-i18n="ch.coherent_overrotation_deg.help">RX(δ) aggiunta dopo SX/X; le RZ virtuali restano ideali.</p>
               </article>
             </div>
           </fieldset>
 
-          <div class="snapshot" id="configSnapshot" aria-live="polite">Configurazione pronta: UC1 · 512 shot · seed 42 bloccato.</div>
-          <p class="status-line" id="experimentStatus" role="status" aria-live="polite">Avvia il confronto per generare i dati.</p>
+          <div class="snapshot" id="configSnapshot" aria-live="polite"></div>
+          <p class="status-line" id="experimentStatus" role="status" aria-live="polite"></p>
         </section>
 
         <section class="panel anatomy-panel" aria-labelledby="anatomyTitle">
           <div class="section-heading compact-heading">
             <div>
-              <p class="kicker">Dove entra il rumore</p>
-              <h2 id="anatomyTitle">Su quante porte agisce ciascun errore</h2>
+              <p class="kicker" data-i18n="anatomy.kicker">Dove entra il rumore</p>
+              <h2 id="anatomyTitle" data-i18n="anatomy.title">Su quante porte agisce ciascun errore</h2>
             </div>
             <span class="anatomy-scope" id="anatomyScope">—</span>
           </div>
-          <p class="panel-intro">Il modello è <strong>uniforme</strong>: ogni qubit ha gli stessi parametri, non è la calibrazione di una QPU reale. Quello che cambia muovendo i cursori è su quante porte l’errore agisce e quanto pesa.</p>
-          <div class="anatomy-scroller" tabindex="0" aria-label="Schema del circuito compilato con i canali di errore; scorri orizzontalmente sui display piccoli">
+          <p class="panel-intro" data-i18n-html="anatomy.intro">Il modello è <strong>uniforme</strong>: ogni qubit ha gli stessi parametri, non è la calibrazione di una QPU reale. Quello che cambia muovendo i cursori è su quante porte l’errore agisce e quanto pesa.</p>
+          <div class="anatomy-scroller" tabindex="0" data-i18n-attr="aria-label:anatomy.scroller.aria">
             <svg id="anatomySvg" class="anatomy-svg" viewBox="0 0 900 300" role="img" aria-labelledby="anatomySvgTitle anatomySvgDesc">
-              <title id="anatomySvgTitle">Dove entra il rumore nel circuito compilato</title>
-              <desc id="anatomySvgDesc">Due fili di qubit attraversano una porta sx, una cx, una rotazione rz e la misura. Sotto ogni porta è indicato il canale di errore che vi agisce e quante volte compare nel circuito.</desc>
+              <title id="anatomySvgTitle" data-i18n="anatomy.svg.title">Dove entra il rumore nel circuito compilato</title>
+              <desc id="anatomySvgDesc" data-i18n="anatomy.svg.desc">Due fili di qubit attraversano una porta sx, una cx, una rotazione rz e la misura. Sotto ogni porta è indicato il canale di errore che vi agisce e quante volte compare nel circuito.</desc>
 
               <text x="16" y="96" class="ana-wire-label">qᵢ</text>
               <text x="16" y="176" class="ana-wire-label">qⱼ</text>
@@ -255,8 +267,8 @@
                 <rect x="108" y="66" width="56" height="48" rx="9" class="ana-gate"/>
                 <text x="136" y="96" class="ana-gate-text">SX</text>
                 <line x1="136" y1="114" x2="136" y2="206" class="ana-link"/>
-                <text x="136" y="228" class="ana-cap">depolarizzazione 1Q</text>
-                <text x="136" y="248" class="ana-cap ana-cap-dim">+ termico + sovrarotazione</text>
+                <text x="136" y="228" class="ana-cap" data-i18n="anatomy.cap.sx">depolarizzazione 1Q</text>
+                <text x="136" y="248" class="ana-cap ana-cap-dim" data-i18n="anatomy.cap.sxDim">+ termico + sovrarotazione</text>
                 <text x="136" y="272" class="ana-count" id="anaSxCount">—</text>
               </g>
 
@@ -267,8 +279,8 @@
                 <line x1="313" y1="170" x2="347" y2="170" class="ana-cross"/>
                 <line x1="330" y1="153" x2="330" y2="187" class="ana-cross"/>
                 <line x1="330" y1="187" x2="330" y2="206" class="ana-link"/>
-                <text x="330" y="228" class="ana-cap">depolarizzazione 2Q</text>
-                <text x="330" y="248" class="ana-cap ana-cap-dim">+ termico · il canale fragile</text>
+                <text x="330" y="228" class="ana-cap" data-i18n="anatomy.cap.cx">depolarizzazione 2Q</text>
+                <text x="330" y="248" class="ana-cap ana-cap-dim" data-i18n="anatomy.cap.cxDim">+ termico · il canale fragile</text>
                 <text x="330" y="272" class="ana-count" id="anaCxCount">—</text>
               </g>
 
@@ -276,8 +288,8 @@
                 <rect x="524" y="66" width="56" height="48" rx="9" class="ana-gate"/>
                 <text x="552" y="96" class="ana-gate-text">RZ</text>
                 <line x1="552" y1="114" x2="552" y2="206" class="ana-link"/>
-                <text x="552" y="228" class="ana-cap">nessun rumore</text>
-                <text x="552" y="248" class="ana-cap ana-cap-dim">rotazione virtuale, durata zero</text>
+                <text x="552" y="228" class="ana-cap" data-i18n="anatomy.cap.rz">nessun rumore</text>
+                <text x="552" y="248" class="ana-cap ana-cap-dim" data-i18n="anatomy.cap.rzDim">rotazione virtuale, durata zero</text>
                 <text x="552" y="272" class="ana-count" id="anaRzCount">—</text>
               </g>
 
@@ -287,50 +299,50 @@
                 <text x="770" y="96" class="ana-gate-text">M</text>
                 <text x="770" y="176" class="ana-gate-text">M</text>
                 <line x1="770" y1="194" x2="770" y2="206" class="ana-link"/>
-                <text x="770" y="228" class="ana-cap">errore di lettura</text>
-                <text x="770" y="248" class="ana-cap ana-cap-dim">P(1|0) e P(0|1)</text>
+                <text x="770" y="228" class="ana-cap" data-i18n="anatomy.cap.meas">errore di lettura</text>
+                <text x="770" y="248" class="ana-cap ana-cap-dim" data-i18n="anatomy.cap.measDim">P(1|0) e P(0|1)</text>
                 <text x="770" y="272" class="ana-count" id="anaMeasCount">—</text>
               </g>
             </svg>
           </div>
           <div class="anatomy-grid" id="anatomyGrid"></div>
-          <p class="anatomy-note">I valori fra parentesi sono <strong>proxy dichiarati</strong>, calcolati sui conteggi del circuito compilato: non sono probabilità di successo dell’algoritmo, né fedeltà del circuito.</p>
+          <p class="anatomy-note" data-i18n-html="anatomy.note">I valori fra parentesi sono <strong>proxy dichiarati</strong>, calcolati sui conteggi del circuito compilato: non sono probabilità di successo dell’algoritmo, né fedeltà del circuito.</p>
         </section>
 
         </div>
 
         <section class="panel results-panel" aria-labelledby="resultsTitle">
           <div class="section-heading">
-            <div><p class="kicker">Baseline fissa + confronto riproducibile</p><h2 id="resultsTitle">Quanto cambia l’algoritmo?</h2></div>
-            <div class="random-baseline" id="randomBaseline" title="Successo atteso da una distribuzione uniforme"><small>Baseline casuale</small><strong id="randomBaselineValue">24,6%</strong></div>
+            <div><p class="kicker" data-i18n="results.kicker">Baseline fissa + confronto riproducibile</p><h2 id="resultsTitle" data-i18n="results.title">Quanto cambia l’algoritmo?</h2></div>
+            <div class="random-baseline" id="randomBaseline"><small data-i18n="results.randomBaseline">Baseline casuale</small><strong id="randomBaselineValue">—</strong></div>
           </div>
-          <div class="ideal-baseline"><span aria-hidden="true">◎</span><p id="idealBaselineText"><strong>Riferimento ideale teorico:</strong> quattro picchi in <span class="mono">0, 64, 128, 192</span>; probabilità di fattorizzazione per shot ≈ <strong>75%</strong>. I campioni usano lo stesso budget e un seed radice riproducibile.</p></div>
-          <div id="emptyResults" class="empty-results"><span aria-hidden="true">⌁</span><h3>Nessun esperimento ancora eseguito</h3><p>Scegli un preset o attiva un solo errore, quindi premi “Confronta ideale e rumore”.</p></div>
+          <div class="ideal-baseline"><span aria-hidden="true">◎</span><p id="idealBaselineText"></p></div>
+          <div id="emptyResults" class="empty-results"><span aria-hidden="true">⌁</span><h3 data-i18n="results.empty.title">Nessun esperimento ancora eseguito</h3><p data-i18n="results.empty.text">Scegli un preset o attiva un solo errore, quindi premi “Confronta ideale e rumore”.</p></div>
 
           <div id="experimentResults" hidden>
-            <div class="kpi-grid" aria-label="Indicatori principali">
-              <article class="kpi kpi-ideal"><small>Ideale · P(fattori)</small><strong id="idealYield">—</strong><p id="idealCI">IC 95% —</p></article>
-              <article class="kpi kpi-noisy"><small>Rumoroso · P(fattori)</small><strong id="noisyYield">—</strong><p id="noisyCI">IC 95% —</p></article>
-              <article class="kpi"><small>Variazione</small><strong id="yieldDelta">—</strong><p id="yieldDeltaCI">IC 95% della differenza —</p></article>
-              <article class="kpi"><small>Massa sui picchi</small><strong id="peakMass">—</strong><p id="usefulPeakMass">picchi utili —</p></article>
-              <article class="kpi"><small>Distanza TVD</small><strong id="tvdValue">—</strong><p>0 = distribuzioni identiche</p></article>
-              <article class="kpi"><small id="hellingerLabel">Distanza Hellinger</small><strong id="hellingerValue">—</strong><p id="hellingerHelp">0 = distribuzioni identiche</p></article>
+            <div class="kpi-grid" data-i18n-attr="aria-label:kpi.aria">
+              <article class="kpi kpi-ideal"><small data-i18n="kpi.ideal">Ideale · P(fattori)</small><strong id="idealYield">—</strong><p id="idealCI" data-i18n="ci.placeholder">IC 95% —</p></article>
+              <article class="kpi kpi-noisy"><small data-i18n="kpi.noisy">Rumoroso · P(fattori)</small><strong id="noisyYield">—</strong><p id="noisyCI" data-i18n="ci.placeholder">IC 95% —</p></article>
+              <article class="kpi"><small data-i18n="kpi.delta">Variazione</small><strong id="yieldDelta">—</strong><p id="yieldDeltaCI" data-i18n="ci.deltaPlaceholder">IC 95% della differenza —</p></article>
+              <article class="kpi"><small data-i18n="kpi.peakMass">Massa sui picchi</small><strong id="peakMass">—</strong><p id="usefulPeakMass" data-i18n="kpi.usefulPeaks.placeholder">picchi utili —</p></article>
+              <article class="kpi"><small data-i18n="kpi.tvd">Distanza TVD</small><strong id="tvdValue">—</strong><p data-i18n="kpi.identical0">0 = distribuzioni identiche</p></article>
+              <article class="kpi"><small id="hellingerLabel" data-i18n="kpi.hellinger.distance">Distanza Hellinger</small><strong id="hellingerValue">—</strong><p id="hellingerHelp" data-i18n="kpi.identical0">0 = distribuzioni identiche</p></article>
             </div>
 
             <div class="chart-block">
               <div class="chart-header">
-                <div><h3>Distribuzione completa degli esiti</h3><p id="chartAxisHelp">Asse 0…255. Le linee verticali segnano i quattro picchi teorici.</p></div>
-                <div class="chart-legend" aria-label="Legenda del grafico"><span><i class="swatch ideal-swatch"></i>Ideale</span><span><i class="swatch noisy-swatch"></i>Rumoroso</span><span><i class="peak-marker"></i>Picco teorico</span></div>
+                <div><h3 data-i18n="chart.title">Distribuzione completa degli esiti</h3><p id="chartAxisHelp"></p></div>
+                <div class="chart-legend" data-i18n-attr="aria-label:chart.legend.aria"><span><i class="swatch ideal-swatch"></i><span data-i18n="chart.legend.ideal">Ideale</span></span><span><i class="swatch noisy-swatch"></i><span data-i18n="chart.legend.noisy">Rumoroso</span></span><span><i class="peak-marker"></i><span data-i18n="chart.legend.peak">Picco teorico</span></span></div>
               </div>
-              <div class="chart-scroller" tabindex="0" aria-label="Grafico degli esiti; scorri orizzontalmente sui display piccoli">
-                <svg id="distributionChart" class="distribution-chart" viewBox="0 0 1120 390" role="img" aria-labelledby="chartTitle chartDesc"><title id="chartTitle">Confronto tra distribuzione ideale e rumorosa</title><desc id="chartDesc">Il grafico verrà generato dopo l'esecuzione dell'esperimento.</desc></svg>
+              <div class="chart-scroller" tabindex="0" data-i18n-attr="aria-label:chart.scroller.aria">
+                <svg id="distributionChart" class="distribution-chart" viewBox="0 0 1120 390" role="img" aria-labelledby="chartTitle chartDesc"><title id="chartTitle" data-i18n="chart.svg.title">Confronto tra distribuzione ideale e rumorosa</title><desc id="chartDesc" data-i18n="chart.svg.desc">Il grafico verrà generato dopo l'esecuzione dell'esperimento.</desc></svg>
               </div>
-              <p class="chart-summary" id="chartSummary">Nessun dato disponibile.</p>
+              <p class="chart-summary" id="chartSummary" data-i18n="chart.noData">Nessun dato disponibile.</p>
             </div>
 
             <div class="details-grid">
-              <section aria-labelledby="metricsTitle"><h3 id="metricsTitle">Metriche di qualità</h3><dl class="metric-list"><div><dt>Entropia ideale</dt><dd id="idealEntropy">—</dd></div><div><dt>Entropia rumorosa</dt><dd id="noisyEntropy">—</dd></div><div><dt>Fattori osservati · ideale</dt><dd id="idealFactors">—</dd></div><div><dt>Fattori osservati · rumore</dt><dd id="noisyFactors">—</dd></div></dl></section>
-              <section aria-labelledby="iterationsTitle"><h3 id="iterationsTitle">Prime misure reali</h3><p class="details-help">Mostriamo subito un campione: ✓ estrae i fattori, × non è risolutivo.</p><div id="iterationList" class="iteration-list" aria-label="Prime iterazioni rumorose"></div></section>
+              <section aria-labelledby="metricsTitle"><h3 id="metricsTitle" data-i18n="details.metrics">Metriche di qualità</h3><dl class="metric-list"><div><dt data-i18n="details.idealEntropy">Entropia ideale</dt><dd id="idealEntropy">—</dd></div><div><dt data-i18n="details.noisyEntropy">Entropia rumorosa</dt><dd id="noisyEntropy">—</dd></div><div><dt data-i18n="details.idealFactors">Fattori osservati · ideale</dt><dd id="idealFactors">—</dd></div><div><dt data-i18n="details.noisyFactors">Fattori osservati · rumore</dt><dd id="noisyFactors">—</dd></div></dl></section>
+              <section aria-labelledby="iterationsTitle"><h3 id="iterationsTitle" data-i18n="details.iterations">Prime misure reali</h3><p class="details-help" data-i18n="details.iterations.help">Mostriamo subito un campione: ✓ estrae i fattori, × non è risolutivo.</p><div id="iterationList" class="iteration-list" data-i18n-attr="aria-label:details.iterations.aria"></div></section>
             </div>
           </div>
         </section>
@@ -339,17 +351,18 @@
 
     <div class="result-popup" id="resultPopup" role="dialog" aria-modal="true" aria-labelledby="resultPopupTitle" hidden>
       <div class="result-popup-card">
-        <p class="kicker" id="resultPopupKicker">Esito della misura</p>
+        <p class="kicker" id="resultPopupKicker" data-i18n="popup.kicker">Esito della misura</p>
         <h2 id="resultPopupTitle">—</h2>
         <p id="resultPopupDetail">—</p>
-        <button class="button button-secondary" id="resultPopupClose" type="button">Chiudi</button>
+        <button class="button button-secondary" id="resultPopupClose" type="button" data-i18n="popup.close">Chiudi</button>
       </div>
     </div>
 
 
-    <footer><p>Demo didattica · istanze compilate e validate <span class="mono">N=15, 21, 35</span>. I preset descrivono un modello NISQ illustrativo, non una specifica QPU reale.</p></footer>
+    <footer><p data-i18n-html="footer">Demo didattica · istanze compilate e validate <span class="mono">N=15, 21, 35</span>. I preset descrivono un modello NISQ illustrativo, non una specifica QPU reale.</p></footer>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -139,13 +139,18 @@ def classical_preprocess(N, seed=None):
             "piccolo, oppure uno dei tre preset legacy (15, 21, 35)."
         )
     if N % 2 == 0:
-        return dict(done=True, reason="N è pari", p=2, q=N // 2, a=None, r=None)
+        return dict(done=True, reason="N è pari", reason_key="reason.even",
+                    reason_params={}, p=2, q=N // 2, a=None, r=None)
     pp = _perfect_power(N)
     if pp is not None:
         b, k = pp
-        return dict(done=True, reason=f"N è una potenza perfetta ({b}^{k})", p=b, q=N // b, a=None, r=None)
+        return dict(done=True, reason=f"N è una potenza perfetta ({b}^{k})",
+                    reason_key="reason.perfectPower", reason_params={"b": b, "k": k},
+                    p=b, q=N // b, a=None, r=None)
     if _is_prime(N):
-        return dict(done=True, reason="N è primo: non è fattorizzabile", p=None, q=None, a=None, r=None)
+        return dict(done=True, reason="N è primo: non è fattorizzabile",
+                    reason_key="reason.prime", reason_params={},
+                    p=None, q=None, a=None, r=None)
 
     if N in LEGACY_PRESET_A:
         a = LEGACY_PRESET_A[N]
@@ -165,6 +170,7 @@ def classical_preprocess(N, seed=None):
     g = gcd(a, N)
     if g > 1:
         return dict(done=True, reason=f"gcd({a}, {N}) = {g} — fattore trovato per fortuna classica",
+                    reason_key="reason.luckyGcd", reason_params={"a": a, "N": N, "g": g},
                     p=g, q=N // g, a=a, r=None)
 
     n_count = n_count_for(N)

@@ -82,6 +82,10 @@ button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity:
 
 .shell { width: min(1440px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 42px; }
 .site-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
   padding: 8px 6px 22px;
 }
 .site-header > *, .tab > span:last-child { min-width: 0; }
@@ -100,6 +104,35 @@ button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity:
   text-wrap: balance;
 }
 .site-header h1 em { color: var(--amber); font-weight: 500; }
+
+/* Selettore di lingua. La bandiera visibile e' quella della lingua ATTIVA:
+   premerla passa all'altra. Due SVG inline, nessun asset esterno da caricare. */
+.lang-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 7px 14px 7px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font: 750 .72rem/1 var(--mono);
+  letter-spacing: .12em;
+  cursor: pointer;
+  transition: border-color .18s ease, color .18s ease, transform .18s ease;
+}
+.lang-toggle:hover { border-color: rgba(245, 173, 78, .55); color: var(--text); transform: translateY(-1px); }
+.lang-toggle:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+.lang-toggle .flag {
+  width: 26px;
+  height: 17px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .18);
+}
+.lang-toggle .flag[hidden] { display: none; }
+.lang-toggle .lang-code { padding-top: 1px; }
 /* Primo controllo della riga: si sceglie il numero, poi si avvia. */
 .instance-control { display: grid; gap: 5px; color: var(--dim); font-size: .62rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .instance-control select { min-width: 104px; border-color: rgba(100,213,223,.45); color: var(--cyan); font: 750 .86rem/1 var(--mono); }

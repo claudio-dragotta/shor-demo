@@ -231,6 +231,10 @@ def _classical_outcome(outcome: dict) -> dict:
     Non e' un errore: il pre-processing classico fa parte dell'algoritmo, ed e'
     la ragione per cui Shor si applica solo a certi N. Va mostrato, non nascosto
     dietro un messaggio di rifiuto.
+
+    Il motivo viaggia due volte: `reason` e' il testo italiano gia' formato, che
+    resta per i consumatori dell'API; `reason_key`/`reason_params` sono la forma
+    strutturata da cui il frontend compone la frase nella lingua scelta.
     """
     p, q = outcome.get("p"), outcome.get("q")
     return {
@@ -238,6 +242,8 @@ def _classical_outcome(outcome: dict) -> dict:
         "done": True,
         "solved_classically": True,
         "reason": outcome.get("reason"),
+        "reason_key": outcome.get("reason_key"),
+        "reason_params": outcome.get("reason_params"),
         "p": int(p) if p is not None else None,
         "q": int(q) if q is not None else None,
         "validated": False,

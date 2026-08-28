@@ -11,11 +11,13 @@
   });
   const $ = (id) => document.getElementById(id);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const t = (key, values = null) => window.I18N.t(key, values);
 
   const state = {
     instance: INSTANCES[15],
     ideal: { info: null, stage: 0, bloch: null, controller: null, requestId: 0, playing: false, timer: null, classical: null },
-    experiment: { controller: null, requestId: 0, running: false, preset: "uc1", hasResult: false },
+    experiment: { controller: null, requestId: 0, running: false, preset: "uc1", hasResult: false,
+                  lastResponse: null, lastRenderSnapshot: null },
     cost: null,
     // Vista di Bloch sotto rumore: sempre N=15, l'unica istanza in cui la
     // matrice densita' resta calcolabile.
@@ -51,29 +53,31 @@
     },
   };
 
-  const PRESET_LABELS = Object.freeze({ readout: "Solo readout", uc1: "UC1 moderato", uc2: "UC2 stress", custom: "Personalizzato" });
+  const PRESET_NAMES = Object.freeze(["readout", "uc1", "uc2", "custom"]);
+  // Il nome del preset si legge dal dizionario a ogni uso: cambiando lingua
+  // cambia anche dove e' gia' finito dentro una frase composta.
+  const presetLabel = (name) => t(`preset.${PRESET_NAMES.includes(name) ? name : "custom"}`);
   const QUANTUM_NOISE_CHANNELS = Object.freeze(["eps_1q", "eps_2q", "t1_us", "t2_us", "coherent_overrotation_deg"]);
 
   const CHANNELS = {
     eps_1q: { input: "eps1qInput", output: "eps1qOutput", format: percentControl },
     eps_2q: { input: "eps2qInput", output: "eps2qOutput", format: percentControl },
-    t1_us: { input: "t1Input", output: "t1Output", format: (v) => `${numberIT(v, 0)} µs` },
-    t2_us: { input: "t2Input", output: "t2Output", format: (v) => `${numberIT(v, 0)} µs` },
+    t1_us: { input: "t1Input", output: "t1Output", format: (v) => `${fmtNum(v, 0)} µs` },
+    t2_us: { input: "t2Input", output: "t2Output", format: (v) => `${fmtNum(v, 0)} µs` },
     readout_0to1: { input: "readout01Input", output: "readout01Output", format: percentControl },
     readout_1to0: { input: "readout10Input", output: "readout10Output", format: percentControl },
-    coherent_overrotation_deg: { input: "overrotationInput", output: "overrotationOutput", format: (v) => `${numberIT(v, 1)}°` },
+    coherent_overrotation_deg: { input: "overrotationInput", output: "overrotationOutput", format: (v) => `${fmtNum(v, 1)}°` },
   };
 
-  function numberIT(value, digits = 2) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return "—";
-    return n.toLocaleString("it-IT", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  // La separazione decimale segue la lingua scelta: 0,75 in italiano, 0.75 in inglese.
+  function fmtNum(value, digits = 2) {
+    return window.I18N.formatNumber(value, digits);
   }
 
   function percentControl(value) {
     const percentage = Number(value) * 100;
     const digits = percentage < 1 ? 3 : 2;
-    return `${numberIT(percentage, digits)}%`;
+    return `${fmtNum(percentage, digits)}%`;
   }
 
   function ratio(value) {
@@ -84,28 +88,48 @@
 
   function percentMetric(value, digits = 1) {
     const r = ratio(value);
-    return r == null ? "—" : `${numberIT(r * 100, digits)}%`;
+    return r == null ? "—" : `${fmtNum(r * 100, digits)}%`;
   }
 
   function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
 
-  function setStatus(id, message, kind = "") {
-    const el = $(id);
-    el.textContent = message;
-    el.className = `status-line${kind ? ` is-${kind}` : ""}`;
+  /* Le righe di stato si ricordano per chiave, non per testo gia' reso: cambiando
+     lingua vanno riscritte, e un messaggio congelato in italiano resterebbe li'
+     finche' l'utente non ripete l'azione che lo ha prodotto. */
+  const statusState = new Map();
+
+  function setStatus(id, key, values = null, kind = "") {
+    statusState.set(id, { key, values, kind });
+    renderStatus(id);
   }
 
+  function renderStatus(id) {
+    const entry = statusState.get(id);
+    const el = $(id);
+    if (!el || !entry) return;
+    /* Un segnaposto puo' essere una funzione: cosi' i frammenti gia' tradotti che
+       finiscono dentro la frase -- nome del preset, etichetta dello stadio --
+       vengono ricalcolati al cambio lingua invece di restare congelati. */
+    const values = entry.values && Object.fromEntries(Object.entries(entry.values)
+      .map(([key, value]) => [key, typeof value === "function" ? value() : value]));
+    el.textContent = t(entry.key, values || null);
+    el.className = `status-line${entry.kind ? ` is-${entry.kind}` : ""}`;
+  }
+
+  /* Il dettaglio che arriva dal backend e' testo del server, non una chiave: si
+     mostra com'e'. Le cornici attorno ("Esperimento non riuscito: …") sono invece
+     tradotte, cosi' la frase non resta interamente in una sola lingua. */
   function errorMessage(error) {
-    if (!error) return "Errore sconosciuto.";
+    if (!error) return t("err.unknown");
     if (typeof error === "string") return error;
     if (Array.isArray(error.detail)) return error.detail.map((item) => item.msg || String(item)).join("; ");
-    return error.detail || error.message || "La richiesta non è riuscita.";
+    return error.detail || error.message || t("err.requestFailed");
   }
 
   async function apiJSON(path, options = {}) {
     const response = await fetch(path, options);
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(errorMessage(data) || `Errore HTTP ${response.status}`);
+    if (!response.ok) throw new Error(errorMessage(data) || t("err.http", { code: response.status }));
     return data;
   }
 
@@ -152,38 +176,40 @@
     });
   }
 
-  const STAGE_COPY = {
-    init0: {
-      title: "Stato iniziale",
-      text: "I qubit di conteggio e il registro di lavoro partono in stati computazionali definiti.",
-      operation: "Preparazione |0…0⟩",
-      observe: "Le frecce puntano verso |0⟩ e hanno lunghezza unitaria.",
-    },
-    init: {
-      title: "Preparazione della sovrapposizione",
-      text: "Gli Hadamard creano una sovrapposizione uniforme sugli otto qubit di conteggio; il registro di lavoro viene posto in |1⟩.",
-      operation: "H⊗⁸ sul conteggio, X sul lavoro",
-      observe: "Le frecce dei qubit di conteggio ruotano verso l’equatore.",
-    },
-    u: {
-      title: "Esponenziazione modulare controllata",
-      text: "Il controllo applica una potenza di Uₐ al registro di lavoro. La periodicità di 7ˣ mod 15 viene codificata nelle fasi.",
-      operation: "U(a²ᵏ) controllata",
-      observe: "Conteggio e lavoro si entangliano: alcune frecce di Bloch si accorciano.",
-    },
-    qft: {
-      title: "Trasformata di Fourier inversa",
-      text: "La QFT⁻¹ converte l’informazione di fase in picchi misurabili separati da 64.",
-      operation: "QFT⁻¹ sul registro di conteggio",
-      observe: "Le ampiezze interferiscono e si concentrano presso 0, 64, 128 e 192.",
-    },
-    measure: {
-      title: "Misura e post-processing",
-      text: "Gli otto qubit collassano in un bitstring. L’intero y alimenta la frazione continua e i MCD classici.",
-      operation: "Misura c₀…c₇",
-      observe: "Il simbolo ✓ indica un esito da cui il post-processing ricava i due fattori; × indica uno shot non risolutivo.",
-    },
-  };
+  const STAGE_KINDS = Object.freeze(["init0", "init", "u", "qft", "measure"]);
+
+  /* Il testo di ogni stadio vive nel dizionario gia' parametrizzato sull'istanza:
+     non esiste un testo base da correggere a mano caso per caso. */
+  function stageCopy(kind, instance) {
+    const k = STAGE_KINDS.includes(kind) ? kind : "init0";
+    const values = {
+      t: instance.nCount ?? "—",
+      last: instance.nCount == null ? "—" : instance.nCount - 1,
+      a: instance.a ?? "a",
+      N: instance.N,
+      r: instance.order ?? "r",
+      peaks: (instance.peaks || []).join(", "),
+    };
+    return {
+      title: t(`stage.${k}.title`, values),
+      text: t(`stage.${k}.text`, values),
+      operation: t(`stage.${k}.operation`, values),
+      observe: t(`stage.${k}.observe`, values),
+    };
+  }
+
+  /* L'etichetta dello stadio si ricostruisce dalla struttura -- kind e ordinale
+     delle moltiplicazioni controllate -- non dal testo italiano del backend, che
+     resta un dettaglio dell'API e non una stringa da mostrare. */
+  function stageLabel(stages, index) {
+    const list = stages || [];
+    const stage = list[index];
+    if (!stage) return "";
+    if (stage.kind !== "u") return t(`stageLabel.${STAGE_KINDS.includes(stage.kind) ? stage.kind : "init0"}`);
+    let ordinal = 0;
+    for (let i = 0; i <= index; i += 1) if (list[i].kind === "u") ordinal += 1;
+    return t("stageLabel.u", { k: ordinal - 1, n: ordinal });
+  }
 
   function setIdealBusy(busy) {
     ["prevStageBtn", "nextStageBtn", "stepModeBtn"].forEach((id) => { $(id).disabled = busy; });
@@ -210,29 +236,36 @@
     const blochOk = state.ideal.info?.bloch_ok !== false;
     $("unvalidatedBadge").hidden = state.ideal.info ? state.ideal.info.validated !== false : !!INSTANCES[instance.N];
     $("instanceABadge").textContent = `a = ${instance.a ?? "—"}`;
-    $("instanceCountBadge").textContent = `t = ${instance.nCount} qubit`;
+    $("instanceCountBadge").textContent = t("badge.qubits", { n: instance.nCount });
     $("theoreticalPeaks").textContent = peaks.length ? peaks.join(" · ") : "—";
     const spacing = M / instance.order;
-    $("peakExplanation").innerHTML = `Posizioni vicine ai multipli di <span class="mono">2^${instance.nCount} / r = ${numberIT(spacing, Number.isInteger(spacing) ? 0 : 2)}</span>, con <span class="mono">r=${instance.order}</span>.`;
+    $("peakExplanation").innerHTML = t("prob.peaks.help", {
+      t: instance.nCount,
+      spacing: fmtNum(spacing, Number.isInteger(spacing) ? 0 : 2),
+      r: instance.order,
+    });
     $("singleShotProbability").textContent = idealYield == null ? "—" : `≈ ${percentMetric(idealYield, 2)}`;
-    $("singleShotExplanation").textContent = `Il post-processing verifica ogni esito misurato e, quando è utile, ne ricava i due divisori di ${instance.N}.`;
+    $("singleShotExplanation").textContent = t("prob.singleShot.help", { N: instance.N });
     $("twoShotProbability").textContent = twoShot == null ? "—" : `≈ ${percentMetric(twoShot, 2)}`;
-    $("twoShotExplanation").textContent = "Due tentativi indipendenti aumentano la probabilità cumulativa di osservare almeno un esito utile.";
-    $("stateViewNoteTitle").textContent = blochOk ? "Nota sulle sfere" : "Perché qui non ci sono le sfere";
+    $("twoShotExplanation").textContent = t("prob.twoShot.help");
+    $("stateViewNoteTitle").textContent = t(blochOk ? "bloch.note.title" : "bloch.note.titleAbsent");
     // Il limite non e' un difetto della demo: disegnare le sfere significa
     // materializzare lo statevector, cioe' fare proprio il calcolo che il
     // computer quantistico evita. Misurato su questa macchina: N=15 (12 qubit)
     // rende l'intera vista in 22 ms; N=21 (22 qubit) supera i 120 s gia' alla
     // prima moltiplicazione modulare controllata.
     const nQubits = state.ideal.info?.num_qubits || 0;
-    const milioni = numberIT(2 ** nQubits / 1e6, 1);
     $("stateViewNote").textContent = blochOk
-      ? "Mostra i soli qubit di conteggio. In presenza di entanglement, il singolo qubit ha uno stato misto e il vettore si contrae verso il centro."
-      : `Servirebbe lo statevector completo dei ${nQubits} qubit: ${milioni} milioni di ampiezze, contro le 4.096 di N=15. Non è un limite della demo — è la stessa difficoltà che rende utile un computer quantistico, e si presenta esattamente alla prima moltiplicazione modulare controllata. Restano gli stadi, i controlli e la misura del circuito validato, con l’esito campionato dalla legge QPE esatta a registro finito.`;
+      ? t("bloch.note.text")
+      : t("bloch.note.absent", { q: nQubits, milioni: fmtNum(2 ** nQubits / 1e6, 1) });
     $("randomBaselineValue").textContent = percentMetric(instance.randomFloor);
-    $("randomBaseline").title = `Successo del post-processing su una distribuzione uniforme dei ${M} esiti`;
-    $("idealBaselineText").innerHTML = `<strong>Riferimento ideale teorico per N=${instance.N}:</strong> picchi presso <span class="mono">${peaks.join(", ")}</span>; probabilità teorica di fattorizzazione per shot ≈ <strong>${percentMetric(idealYield, 2)}</strong>. I dati dell’esperimento sono generati live con Qiskit Aer.`;
-    $("chartAxisHelp").textContent = `Asse 0…${M - 1}. Le linee verticali segnano ${peaks.length} picchi teorici.`;
+    $("randomBaseline").title = t("results.randomBaseline.title", { M });
+    $("idealBaselineText").innerHTML = t("results.idealBaseline", {
+      N: instance.N,
+      peaks: peaks.join(", "),
+      p: percentMetric(idealYield, 2),
+    });
+    $("chartAxisHelp").textContent = t("chart.axisHelp", { max: M - 1, n: peaks.length });
     resetPipeline();
     updateShotBudget();
     updateSnapshot();
@@ -263,26 +296,41 @@
     hideResultPopup();
     $("idealPanel").classList.add("is-classical");
     $("classicPanel").hidden = true;
-    setStatus("idealStatus", `N=${info.N} pronto. Premi Avvia: il pre-processing classico risponde senza costruire il circuito.`);
+    setStatus("idealStatus", "status.classicalReady", { N: info.N });
     updateIdealButtons();
+  }
+
+  /* Il motivo per cui il classico ha gia' chiuso arriva dal backend come chiave
+     piu' parametri (reason_key/reason_params); il testo italiano che l'API manda
+     ancora in `reason` resta solo come ripiego per un backend piu' vecchio. */
+  function classicalReason(info) {
+    if (info?.reason_key) return t(info.reason_key, info.reason_params || null);
+    return info?.reason || "";
+  }
+
+  // Scrive il pannello senza annunciare nulla: serve anche al cambio lingua,
+  // dove far ricomparire il popup sarebbe un annuncio che nessuno ha chiesto.
+  function renderClassicalPanel(info) {
+    const risolto = info.p != null && info.q != null;
+    $("classicTitle").textContent = risolto
+      ? `${info.N} = ${info.p} × ${info.q}`
+      : t("classic.noFactors", { N: info.N });
+    $("classicDetail").textContent = classicalReason(info);
+    return risolto;
   }
 
   function runClassicalOutcome() {
     const info = state.ideal.classical;
     if (!info) return;
-    const risolto = info.p != null && info.q != null;
+    const motivo = classicalReason(info);
     $("classicPanel").hidden = false;
-    $("classicTitle").textContent = risolto
-      ? `${info.N} = ${info.p} × ${info.q}`
-      : `${info.N} non ha fattori non banali`;
-    $("classicDetail").textContent = info.reason || "";
-    setStatus("idealStatus", risolto
-      ? `N=${info.N} risolto dal pre-processing classico, senza costruire il circuito.`
-      : `N=${info.N}: il pre-processing classico chiude la questione.`, "success");
+    const risolto = renderClassicalPanel(info);
+    setStatus("idealStatus", risolto ? "status.classicalSolved" : "status.classicalClosed",
+      { N: info.N }, "success");
     showResultPopup(
       risolto,
       risolto ? `${info.N} = ${info.p} × ${info.q}` : `${info.N}`,
-      `${info.reason}. Shor si ferma qui: la parte quantistica non serve.`,
+      t("popup.classical.detail", { reason: motivo }),
     );
   }
 
@@ -294,7 +342,7 @@
     state.ideal.stage = 0;
     state.ideal.controller?.abort();
     const requestId = ++state.ideal.requestId;
-    setStatus("idealStatus", `Preparo il circuito ideale N=${instance.N}, a=${instance.a}…`, "loading");
+    setStatus("idealStatus", "status.preparingIdeal", { N: instance.N, a: instance.a }, "loading");
     $("playStageBtn").disabled = true;
     try {
       const info = await apiJSON(`/api/factor?N=${instance.N}`);
@@ -307,7 +355,7 @@
       updateInstancePresentation();
       await loadStage(0);
     } catch (error) {
-      setStatus("idealStatus", `Circuito non disponibile: ${errorMessage(error)}`, "error");
+      setStatus("idealStatus", "status.idealUnavailable", { err: errorMessage(error) }, "error");
       renderCircuit(null, null);
     }
   }
@@ -321,7 +369,8 @@
     const controller = new AbortController();
     state.ideal.controller = controller;
     setIdealBusy(true);
-    setStatus("idealStatus", `${info.bloch_ok ? "Calcolo dello stato ridotto" : "Preparo lo stadio del circuito"} · ${info.stages[target].label}…`, "loading");
+    setStatus("idealStatus", info.bloch_ok ? "status.stageLoading" : "status.stageLoadingStructural",
+      { label: () => stageLabel(info.stages, target) }, "loading");
     try {
       let bloch;
       if (info.bloch_ok) {
@@ -347,46 +396,38 @@
       state.ideal.stage = target;
       state.ideal.bloch = bloch;
       renderCircuit(info, bloch);
-      renderStageExplanation(info.stages[target], target, info.stages.length);
+      renderStageExplanation(info.stages, target);
       if (bloch.kind === "measure" && bloch.measured_shot) renderPipeline(bloch.measured_shot);
       else resetPipeline();
-      const source = info.bloch_ok ? "stato ridotto esatto" : "vista strutturale; misura dalla legge QPE esatta";
-      setStatus("idealStatus", `Stadio ${target + 1} di ${info.stages.length}: ${bloch.label || info.stages[target].label} · ${source}.`, "success");
+      setStatus("idealStatus", "status.stageDone", {
+        i: target + 1,
+        n: info.stages.length,
+        label: () => stageLabel(info.stages, target),
+        source: () => t(info.bloch_ok ? "status.stageSource.exact" : "status.stageSource.structural"),
+      }, "success");
     } catch (error) {
-      if (error.name !== "AbortError" && requestId === state.ideal.requestId) setStatus("idealStatus", `Impossibile calcolare lo stadio: ${errorMessage(error)}`, "error");
+      if (error.name !== "AbortError" && requestId === state.ideal.requestId) setStatus("idealStatus", "status.stageFailed", { err: errorMessage(error) }, "error");
     } finally {
       if (requestId === state.ideal.requestId) setIdealBusy(false);
     }
   }
 
-  function renderStageExplanation(stage, index, count) {
+  function renderStageExplanation(stages, index) {
     const instance = currentInstance();
-    const copy = { ...(STAGE_COPY[stage.kind] || STAGE_COPY.init0) };
-    if (stage.kind === "init") {
-      copy.text = `Gli Hadamard creano una sovrapposizione uniforme sui ${instance.nCount} qubit di conteggio; il registro di lavoro viene posto in |1⟩.`;
-      copy.operation = `H⊗${instance.nCount} sul conteggio, X sul lavoro`;
-    } else if (stage.kind === "u") {
-      copy.text = `Il controllo applica una potenza di Uₐ al registro di lavoro. La periodicità di ${instance.a}ˣ mod ${instance.N} viene codificata nelle fasi.`;
-    } else if (stage.kind === "qft") {
-      copy.text = `La QFT⁻¹ converte l’informazione dell’ordine r=${instance.order} nei picchi misurabili della distribuzione.`;
-      copy.observe = `Le ampiezze si concentrano presso ${instance.peaks.join(", ")}.`;
-    } else if (stage.kind === "measure") {
-      copy.text = `I ${instance.nCount} qubit di conteggio producono un bitstring; y alimenta frazioni continue e MCD.`;
-      copy.operation = `Misura c₀…c${instance.nCount - 1}`;
-      copy.observe = "✓ indica un esito da cui si ricavano i due fattori; × uno shot non risolutivo.";
-    }
+    const stage = stages[index];
+    const copy = stageCopy(stage.kind, instance);
     $("stageExplanationTitle").textContent = copy.title;
     $("stageExplanation").textContent = copy.text;
-    $("stageOperation").textContent = stage.label || copy.operation;
+    $("stageOperation").textContent = stageLabel(stages, index) || copy.operation;
     $("stageObserve").textContent = copy.observe;
-    $("stageChip").textContent = `Stadio ${index + 1}/${count}`;
+    $("stageChip").textContent = t("stageChip", { i: index + 1, n: stages.length });
   }
 
   function stopPlayback() {
     state.ideal.playing = false;
     if (state.ideal.timer) window.clearTimeout(state.ideal.timer);
     state.ideal.timer = null;
-    $("playStageBtn").textContent = "Avvia automatico";
+    $("playStageBtn").textContent = t("btn.playAuto");
   }
 
   async function playbackStep() {
@@ -404,7 +445,7 @@
     if (state.ideal.playing) { stopPlayback(); return; }
     if (!state.ideal.info) return;
     state.ideal.playing = true;
-    $("playStageBtn").textContent = "Pausa";
+    $("playStageBtn").textContent = t("btn.pause");
     const last = state.ideal.info.stages.length - 1;
     const begin = state.ideal.stage >= last ? loadStage(0) : Promise.resolve();
     begin.then(() => { if (state.ideal.playing) state.ideal.timer = window.setTimeout(playbackStep, 350); });
@@ -420,11 +461,17 @@
     const instance = currentInstance();
     clearSvg(
       svg,
-      `Circuito ideale di Shor per N uguale a ${instance.N}`,
-      bloch ? `Stadio ${bloch.stage + 1}: ${bloch.label}. ${info?.bloch_ok ? `A destra sono rappresentati gli stati ridotti dei ${instance.nCount} qubit di conteggio.` : `Vista strutturale del circuito validato a ${info?.num_qubits} qubit.`}` : "Circuito non disponibile.",
+      t("circuit.svg.titleFor", { N: instance.N }),
+      bloch ? t("circuit.desc.stage", {
+        i: Number(bloch.stage) + 1,
+        label: stageLabel(info?.stages, Number(bloch.stage)),
+        coda: info?.bloch_ok
+          ? t("circuit.desc.bloch", { t: instance.nCount })
+          : t("circuit.desc.structural", { q: info?.num_qubits }),
+      }) : `${t("circuit.unavailable")}.`,
     );
     if (!info) {
-      svg.append(svgNode("text", { x: 540, y: 290, fill: "var(--red)", "text-anchor": "middle", "font-size": 16 }, "Circuito non disponibile"));
+      svg.append(svgNode("text", { x: 540, y: 290, fill: "var(--red)", "text-anchor": "middle", "font-size": 16 }, t("circuit.unavailable")));
       return;
     }
 
@@ -447,8 +494,9 @@
     const current = bloch ? Number(bloch.stage) : state.ideal.stage;
 
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    svg.append(svgNode("text", { x: 25, y: 28, class: "c-register" }, "REGISTRO DI CONTEGGIO"));
-    svg.append(svgNode("text", { x: sphereX, y: 28, class: "c-state-label" }, showBloch ? "STATO RIDOTTO" : `${info.num_qubits} QUBIT TOTALI · VISTA STRUTTURALE`));
+    svg.append(svgNode("text", { x: 25, y: 28, class: "c-register" }, t("circuit.registerCount")));
+    svg.append(svgNode("text", { x: sphereX, y: 28, class: "c-state-label" },
+      showBloch ? t("circuit.reducedState") : t("circuit.structural", { q: info.num_qubits })));
 
     for (let i = 0; i < nCount; i += 1) {
       const y = yOf(i);
@@ -458,7 +506,7 @@
     }
     svg.append(svgNode("text", { x: 26, y: workY + 4, class: "c-label" }, "w"));
     svg.append(svgNode("line", { x1: wireStart, y1: workY, x2: wireEnd, y2: workY, class: "c-wire c-wire-work" }));
-    svg.append(svgNode("text", { x: 68, y: workY + 25, class: "c-register" }, "REGISTRO DI LAVORO COMPRESSO"));
+    svg.append(svgNode("text", { x: 68, y: workY + 25, class: "c-register" }, t("circuit.registerWork")));
 
     stages.forEach((stage, index) => {
       const x = stageX(index);
@@ -493,7 +541,7 @@
 
     const playX = stageX(current);
     svg.append(svgNode("line", { x1: playX, y1: 37, x2: playX, y2: height - 29, class: "c-playhead" }));
-    svg.append(svgNode("text", { x: playX, y: 48, class: "c-play-label" }, "▼ ORA"));
+    svg.append(svgNode("text", { x: playX, y: 48, class: "c-play-label" }, t("circuit.now")));
 
     if (showBloch) for (let i = 0; i < nCount; i += 1) {
       const y = yOf(i);
@@ -564,7 +612,7 @@
   function showResultPopup(success, title, detail, variante = null, occhiello = null) {
     const popup = $("resultPopup");
     popup.className = `result-popup ${variante || (success ? "is-success" : "is-failure")}`;
-    $("resultPopupKicker").textContent = occhiello || (success ? "Fattori trovati" : "Shot non risolutivo");
+    $("resultPopupKicker").textContent = occhiello || t(success ? "popup.found" : "popup.notUseful");
     $("resultPopupTitle").textContent = title;
     $("resultPopupDetail").textContent = detail;
     if (popup.hidden) resultPopupOpener = document.activeElement;
@@ -578,16 +626,16 @@
     const instance = currentInstance();
     hideResultPopup();   // uscendo dallo stadio di misura il popup non resta appeso
     $("pipelineResult").className = "result-badge";
-    $("pipelineResult").textContent = "In attesa della misura";
+    $("pipelineResult").textContent = t("pipeline.waiting");
     $("mathPipeline").innerHTML = `
-      <li><span>1</span><small>Misura</small><strong>y = —</strong><p>Esito sui ${instance.nCount} bit classici.</p></li>
-      <li><span>2</span><small>Fase</small><strong>y / 2^${instance.nCount} = —</strong><p>Stima della fase periodica.</p></li>
-      <li><span>3</span><small>Frazione continua</small><strong>≈ s / r</strong><p>Il denominatore propone l’ordine.</p></li>
-      <li><span>4</span><small>Ordine candidato</small><strong>r = —</strong><p>Deve essere pari e verificabile.</p></li>
-      <li><span>5</span><small>MCD</small><strong>gcd(${instance.a}ʳᐟ² ± 1, ${instance.N})</strong><p>Estrae eventuali divisori non banali.</p></li>`;
+      <li><span>1</span><small>${t("pipeline.1.label")}</small><strong>y = —</strong><p>${t("pipeline.1.help", { bits: instance.nCount })}</p></li>
+      <li><span>2</span><small>${t("pipeline.2.label")}</small><strong>y / 2^${instance.nCount} = —</strong><p>${t("pipeline.2.help")}</p></li>
+      <li><span>3</span><small>${t("pipeline.3.label")}</small><strong>≈ s / r</strong><p>${t("pipeline.3.help")}</p></li>
+      <li><span>4</span><small>${t("pipeline.4.label")}</small><strong>r = —</strong><p>${t("pipeline.4.help")}</p></li>
+      <li><span>5</span><small>${t("pipeline.5.label")}</small><strong>gcd(${instance.a}ʳᐟ² ± 1, ${instance.N})</strong><p>${t("pipeline.5.help")}</p></li>`;
   }
 
-  function renderPipeline(shot) {
+  function renderPipeline(shot, announce = true) {
     const instance = currentInstance();
     const dimension = instance.dimension || 2 ** instance.nCount;
     const y = clamp(Math.trunc(Number(shot.value) || 0), 0, dimension - 1);
@@ -605,21 +653,26 @@
     const factorB = Number(shot.q) || (factorA ? instance.N / factorA : null);
     const result = $("pipelineResult");
     result.className = `result-badge ${success ? "is-success" : "is-failure"}`;
-    result.textContent = success ? `✓ ${instance.N} = ${factorA} × ${factorB}` : "× Shot non risolutivo";
-    const orderText = verified ? "ordine verificato" : (even ? "candidato parziale" : "denominatore dispari");
-    const gcdText = even ? `gcd(${halfPower}−1,${instance.N})=${gMinus}; gcd(${halfPower}+1,${instance.N})=${gPlus}` : "r dispari: MCD non applicabili";
+    result.textContent = success
+      ? t("pipeline.result.ok", { N: instance.N, p: factorA, q: factorB })
+      : t("pipeline.result.fail");
+    const orderText = verified
+      ? t("pipeline.order.verified")
+      : t(even ? "pipeline.order.partial" : "pipeline.order.odd");
+    const gcdText = even
+      ? `gcd(${halfPower}−1,${instance.N})=${gMinus}; gcd(${halfPower}+1,${instance.N})=${gPlus}`
+      : t("pipeline.gcd.notApplicable");
+    const bits = String(shot.bits || y.toString(2).padStart(instance.nCount, "0"));
     $("mathPipeline").innerHTML = `
-      <li class="${success ? "is-success" : "is-failure"}"><span>1</span><small>Misura</small><strong>y = ${y}</strong><p>Bitstring ${String(shot.bits || y.toString(2).padStart(instance.nCount, "0"))}.</p></li>
-      <li><span>2</span><small>Fase</small><strong>${y} / ${dimension} = ${numberIT(phase, 4)}</strong><p>Stima prodotta dalla QFT⁻¹.</p></li>
-      <li><span>3</span><small>Frazione continua</small><strong>≈ ${fraction.numerator} / ${fraction.denominator}</strong><p>Denominatore limitato a N=${instance.N}.</p></li>
-      <li class="${verified ? "is-success" : ""}"><span>4</span><small>Ordine candidato</small><strong>r = ${r}</strong><p>${orderText}; ${instance.a}ʳ mod ${instance.N} = ${modPow(instance.a, r, instance.N)}.</p></li>
-      <li class="${success ? "is-success" : "is-failure"}"><span>5</span><small>MCD</small><strong>${gcdText}</strong><p>${success ? `Divisori non banali: ${factorA} e ${factorB}.` : "Ripetere lo shot è parte dell’algoritmo."}</p></li>`;
-    showResultPopup(
+      <li class="${success ? "is-success" : "is-failure"}"><span>1</span><small>${t("pipeline.1.label")}</small><strong>y = ${y}</strong><p>${t("pipeline.1.helpDone", { bits })}</p></li>
+      <li><span>2</span><small>${t("pipeline.2.label")}</small><strong>${y} / ${dimension} = ${fmtNum(phase, 4)}</strong><p>${t("pipeline.2.helpDone")}</p></li>
+      <li><span>3</span><small>${t("pipeline.3.label")}</small><strong>≈ ${fraction.numerator} / ${fraction.denominator}</strong><p>${t("pipeline.3.helpDone", { N: instance.N })}</p></li>
+      <li class="${verified ? "is-success" : ""}"><span>4</span><small>${t("pipeline.4.label")}</small><strong>r = ${r}</strong><p>${t("pipeline.4.helpDone", { orderText, a: instance.a, N: instance.N, residuo: modPow(instance.a, r, instance.N) })}</p></li>
+      <li class="${success ? "is-success" : "is-failure"}"><span>5</span><small>${t("pipeline.5.label")}</small><strong>${gcdText}</strong><p>${success ? t("pipeline.5.helpOk", { p: factorA, q: factorB }) : t("pipeline.5.helpFail")}</p></li>`;
+    if (announce) showResultPopup(
       success,
       success ? `${instance.N} = ${factorA} × ${factorB}` : `y = ${y}`,
-      success
-        ? `Dallo shot y = ${y} le frazioni continue danno r = ${r}, e i MCD estraggono i due divisori.`
-        : `Lo shot y = ${y} non porta a un ordine utilizzabile: ripetere la misura fa parte dell’algoritmo.`,
+      t(success ? "popup.shot.ok" : "popup.shot.fail", { y, r }),
     );
   }
 
@@ -638,7 +691,7 @@
     t2.input.max = String(maxT2);
     if (thermalOn && Number(t2.input.value) > maxT2) {
       t2.input.value = String(maxT2);
-      if (changedKey === "t1_us") setStatus("experimentStatus", `T₂ adeguato a ${maxT2} µs per rispettare T₂ ≤ 2T₁.`, "success");
+      if (changedKey === "t1_us") setStatus("experimentStatus", "status.t2Adjusted", { v: maxT2 }, "success");
     }
   }
 
@@ -660,9 +713,9 @@
   function formatProxy(value) {
     if (!Number.isFinite(value)) return "—";
     if (value === 1) return "1";
-    if (value >= 0.001) return numberIT(value, 4);
+    if (value >= 0.001) return fmtNum(value, 4);
     const exp = Math.floor(Math.log10(value));
-    return `${numberIT(value / 10 ** exp, 2)}·10^${exp}`;
+    return `${fmtNum(value / 10 ** exp, 2)}·10^${exp}`;
   }
 
   function updateNoiseAnatomy() {
@@ -670,12 +723,14 @@
     const cost = state.cost;
     if (!cost) {
       grid.replaceChildren();
-      $("anatomyScope").textContent = "conteggi non disponibili";
+      $("anatomyScope").textContent = t("anatomy.unavailable");
       return;
     }
     const n = collectNoise();
     const c = cost.counts;
-    $("anatomyScope").textContent = `N=${cost.N} · ${cost.num_qubits} qubit · profondità ${numberIT(cost.depth, 0)}`;
+    $("anatomyScope").textContent = t("anatomy.scope", {
+      N: cost.N, q: cost.num_qubits, depth: fmtNum(cost.depth, 0),
+    });
 
     const eps1 = Number(n.eps_1q) || 0;
     const eps2 = Number(n.eps_2q) || 0;
@@ -685,27 +740,33 @@
     // Durata illustrativa: le rz sono virtuali e non durano nulla.
     const durataUs = (c.sx_x * cost.gate_time_1q_ns + c.cx * cost.gate_time_2q_ns) / 1000;
 
+    const spento = t("anatomy.row.off");
     const righe = [
-      { attivo: eps1 > 0, nome: "Depolarizzazione 1Q", su: `${numberIT(c.sx_x, 0)} porte sx/x`,
+      { attivo: eps1 > 0, nome: t("ch.eps_1q.name"), su: t("anatomy.row.eps1.where", { n: fmtNum(c.sx_x, 0) }),
         detta: eps1 > 0
-          ? `proxy di nessun evento 1Q: ${formatProxy((1 - 3 * eps1 / 4) ** c.sx_x)}`
-          : "canale spento" },
-      { attivo: eps2 > 0, nome: "Depolarizzazione 2Q", su: `${numberIT(c.cx, 0)} porte cx`,
+          ? t("anatomy.row.eps1.on", { v: formatProxy((1 - 3 * eps1 / 4) ** c.sx_x) })
+          : spento },
+      { attivo: eps2 > 0, nome: t("ch.eps_2q.name"), su: t("anatomy.row.eps2.where", { n: fmtNum(c.cx, 0) }),
         detta: eps2 > 0
-          ? `proxy di nessun evento 2Q: ${formatProxy((1 - 15 * eps2 / 16) ** c.cx)}`
-          : "canale spento" },
-      { attivo: n.t1_us != null, nome: "Canale termico T₁/T₂", su: `durata ≈ ${numberIT(durataUs, 1)} µs`,
+          ? t("anatomy.row.eps2.on", { v: formatProxy((1 - 15 * eps2 / 16) ** c.cx) })
+          : spento },
+      { attivo: n.t1_us != null, nome: t("anatomy.row.thermal.name"),
+        su: t("anatomy.row.thermal.where", { v: fmtNum(durataUs, 1) }),
         detta: n.t1_us != null
-          ? `durata / T₁ = ${numberIT(durataUs / Number(n.t1_us), 3)} · T₂ = ${numberIT(Number(n.t2_us), 0)} µs`
-          : "canale spento" },
-      { attivo: over > 0, nome: "Sovrarotazione coerente", su: `${numberIT(c.sx_x, 0)} porte sx/x`,
-        detta: over > 0 ? `RX(${numberIT(over, 1)}°) dopo ogni sx/x, sempre nello stesso verso` : "canale spento" },
-      { attivo: ro01 > 0 || ro10 > 0, nome: "Errore di lettura", su: `${cost.n_count} bit misurati`,
+          ? t("anatomy.row.thermal.on", {
+              ratio: fmtNum(durataUs / Number(n.t1_us), 3), t2: fmtNum(Number(n.t2_us), 0),
+            })
+          : spento },
+      { attivo: over > 0, nome: t("anatomy.row.over.name"), su: t("anatomy.row.eps1.where", { n: fmtNum(c.sx_x, 0) }),
+        detta: over > 0 ? t("anatomy.row.over.on", { deg: fmtNum(over, 1) }) : spento },
+      { attivo: ro01 > 0 || ro10 > 0, nome: t("anatomy.row.readout.name"),
+        su: t("anatomy.row.readout.where", { n: cost.n_count }),
         detta: (ro01 > 0 || ro10 > 0)
-          ? `P(1|0) = ${numberIT(ro01 * 100, 2)}% · P(0|1) = ${numberIT(ro10 * 100, 2)}%`
-          : "canale spento" },
-      { attivo: false, virtuale: true, nome: "Rotazioni rz", su: `${numberIT(c.rz, 0)} porte`,
-        detta: "virtuali: nessuna durata, nessun rumore" },
+          ? t("anatomy.row.readout.on", { a: fmtNum(ro01 * 100, 2), b: fmtNum(ro10 * 100, 2) })
+          : spento },
+      { attivo: false, virtuale: true, nome: t("anatomy.row.rz.name"),
+        su: t("anatomy.row.rz.where", { n: fmtNum(c.rz, 0) }),
+        detta: t("anatomy.row.rz.on") },
     ];
 
     // Lo schema si accende dove il canale e' attivo, e riporta su quante porte agisce.
@@ -713,10 +774,10 @@
     accendi("anaSx", eps1 > 0 || over > 0 || n.t1_us != null);
     accendi("anaCx", eps2 > 0 || n.t1_us != null);
     accendi("anaMeas", ro01 > 0 || ro10 > 0);
-    $("anaSxCount").textContent = `${numberIT(c.sx_x, 0)} porte`;
-    $("anaCxCount").textContent = `${numberIT(c.cx, 0)} porte`;
-    $("anaRzCount").textContent = `${numberIT(c.rz, 0)} porte`;
-    $("anaMeasCount").textContent = `${cost.n_count} bit`;
+    $("anaSxCount").textContent = t("anatomy.gates", { n: fmtNum(c.sx_x, 0) });
+    $("anaCxCount").textContent = t("anatomy.gates", { n: fmtNum(c.cx, 0) });
+    $("anaRzCount").textContent = t("anatomy.gates", { n: fmtNum(c.rz, 0) });
+    $("anaMeasCount").textContent = t("anatomy.bits", { n: cost.n_count });
 
     grid.replaceChildren(...righe.map((r) => {
       const el = document.createElement("article");
@@ -758,7 +819,7 @@
     const token = ++state.bloch.token;
     stopNoisePlayback();
     state.bloch.loading = true;
-    setStatus("blochStatus", "Calcolo lo stato sotto rumore: e' una matrice densita', non un vettore. La prima volta per ogni preset richiede una decina di secondi, poi resta in cache…", "loading");
+    setStatus("blochStatus", "status.blochLoading", null, "loading");
     updateBlochButtons();
     const noise = collectNoise();
     codaBloch = codaBloch.then(() => eseguiCaricamentoBloch(token, noise)).catch(() => {});
@@ -782,7 +843,7 @@
           } catch (error) {
             const occupato = /gia' in esecuzione|già in esecuzione/i.test(String(error?.message || ""));
             if (!occupato || tentativo >= 5 || token !== state.bloch.token) throw error;
-            setStatus("blochStatus", "Simulatore occupato da un altro calcolo: attendo…", "loading");
+            setStatus("blochStatus", "status.blochBusy", null, "loading");
             await new Promise((r) => window.setTimeout(r, 2500));
           }
         }
@@ -800,13 +861,11 @@
       if (!info) return;
       renderBlochStage();
       setStatus("blochStatus", soloLettura
-        ? "L'errore di lettura agisce sull'esito della misura, non sullo stato: le sfere restano quelle ideali. Il suo effetto si vede nelle statistiche qui sotto."
-        : quantistico
-          ? "Stato calcolato sotto il rumore scelto. Scorri gli stadi: le frecce si accorciano dove il rumore agisce."
-          : "Nessun rumore attivo: le frecce si accorciano solo per l'entanglement.", "success");
+        ? "status.blochReadoutOnly"
+        : quantistico ? "status.blochNoisy" : "status.blochIdeal", null, "success");
     } catch (error) {
       if (token !== state.bloch.token) return;
-      setStatus("blochStatus", `Stato non disponibile: ${errorMessage(error)}`, "error");
+      setStatus("blochStatus", "status.blochFailed", { err: errorMessage(error) }, "error");
     } finally {
       if (token === state.bloch.token) { state.bloch.loading = false; updateBlochButtons(); }
     }
@@ -828,8 +887,8 @@
     const idx = clamp(state.bloch.stage, 0, dati.stages.length - 1);
     const confronto = state.bloch.mode === "compare";
     $("idealCirclePanel").hidden = !confronto;
-    $("noisyCircuitKicker").textContent = confronto ? "Sotto rumore" : "Stato dei qubit";
-    $("noiseStageChip").textContent = `Stadio ${idx + 1}/${dati.stages.length}`;
+    $("noisyCircuitKicker").textContent = t(confronto ? "noise.noisy.kicker" : "noise.noisy.kickerPlain");
+    $("noiseStageChip").textContent = t("stageChip", { i: idx + 1, n: dati.stages.length });
     renderCircuit(info, { ...dati.stages[idx], n_count: dati.n_count }, "noisyCircuitSvg");
     if (confronto && state.bloch.ideal) {
       const rif = state.bloch.ideal.stages[idx];
@@ -872,7 +931,7 @@
     state.bloch.playing = false;
     if (state.bloch.timer) window.clearTimeout(state.bloch.timer);
     state.bloch.timer = null;
-    $("noisePlayBtn").textContent = "Avvia automatico";
+    $("noisePlayBtn").textContent = t("btn.playAuto");
   }
 
   function noisePlaybackStep() {
@@ -888,7 +947,7 @@
     if (state.bloch.playing) { stopNoisePlayback(); return; }
     if (!state.bloch.noisy) return;
     state.bloch.playing = true;
-    $("noisePlayBtn").textContent = "Pausa";
+    $("noisePlayBtn").textContent = t("btn.pause");
     const ultimo = state.bloch.noisy.stages.length - 1;
     if (state.bloch.stage >= ultimo) setBlochStage(0);
     state.bloch.timer = window.setTimeout(noisePlaybackStep, 400);
@@ -904,26 +963,33 @@
     const finiRum = rumoroso.stages[rumoroso.stages.length - 1].qubits;
     const finiId = ideale.stages[ideale.stages.length - 1].qubits;
     const puri = finiId.map((q, i) => ({ i, id: q.len, rum: finiRum[i]?.len ?? 0 })).filter((q) => q.id > 0.99);
-    const etichetta = PRESET_LABELS[state.experiment.preset] || "Personalizzato";
+    const etichetta = presetLabel(state.experiment.preset);
 
     if (rumoroso.readout_only) {
-      showResultPopup(true, "Lo stato non cambia",
-        "L'errore di lettura sbaglia il bit al momento della misura, non tocca l'evoluzione del circuito: la matrice densita' resta quella ideale. Il suo effetto si vede nell'istogramma, non nelle sfere.",
-        "is-info", "Solo readout");
+      showResultPopup(true, t("popup.readoutOnly.title"), t("popup.readoutOnly.text"),
+        "is-info", t("popup.readoutOnly.kicker"));
       return;
     }
     if (!rumoroso.noisy || !puri.length) {
-      showResultPopup(true, "Nessun rumore attivo",
-        `Le frecce corte che vedi sono entanglement, non decoerenza: ${finiId.length - puri.length} qubit di conteggio sono correlati con il registro di lavoro.`,
-        "is-info", "Riferimento ideale");
+      showResultPopup(true, t("popup.noNoise.title"),
+        t("popup.noNoise.text", { n: finiId.length - puri.length }),
+        "is-info", t("popup.noNoise.kicker"));
       return;
     }
     const media = puri.reduce((acc, q) => acc + q.rum, 0) / puri.length;
     const minimo = Math.min(...puri.map((q) => q.rum));
     const massimo = Math.max(...puri.map((q) => q.rum));
-    showResultPopup(false, `|r| da 1,00 a ${numberIT(media, 2)}`,
-      `${etichetta}: ${puri.length} qubit di conteggio erano puri senza rumore. Alla misura il loro vettore di Bloch scende in media a ${numberIT(media, 2)}, fra ${numberIT(minimo, 2)} e ${numberIT(massimo, 2)}. Gli altri ${finiId.length - puri.length} erano gia' a zero per entanglement: quella non e' decoerenza.`,
-      "is-info", "Cosa ha fatto il rumore");
+    showResultPopup(false,
+      t("popup.decoherence.title", { uno: fmtNum(1, 2), media: fmtNum(media, 2) }),
+      t("popup.decoherence.text", {
+        preset: etichetta,
+        puri: puri.length,
+        media: fmtNum(media, 2),
+        min: fmtNum(minimo, 2),
+        max: fmtNum(massimo, 2),
+        altri: finiId.length - puri.length,
+      }),
+      "is-info", t("popup.decoherence.kicker"));
   }
 
   function setupBlochView() {
@@ -956,7 +1022,7 @@
     $$(".preset").forEach((button) => {
       const unavailable = state.instance.N === 21 && ["uc1", "uc2"].includes(button.dataset.preset);
       button.disabled = state.experiment.running || unavailable;
-      button.title = unavailable ? "Per N=21 il rumore di gate supera il budget live; usa Solo readout." : "";
+      button.title = unavailable ? t("preset.unavailable21") : "";
     });
     $("newRealizationBtn").disabled = $("seedLockInput").checked;
     updateShotBudget();
@@ -971,7 +1037,7 @@
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-pressed", String(active));
     });
-    if (state.experiment.hasResult && !state.experiment.running) setStatus("experimentStatus", "Parametri modificati: riesegui per aggiornare il confronto.");
+    if (state.experiment.hasResult && !state.experiment.running) setStatus("experimentStatus", "status.paramsChanged");
   }
 
   function setThermalEnabled(enabled) {
@@ -1001,7 +1067,7 @@
     });
     refreshNoiseUI();
     loadNoisyBloch();
-    setStatus("experimentStatus", `${PRESET_LABELS[name]} caricato. Avvia il confronto per applicarlo.`);
+    setStatus("experimentStatus", "status.presetLoaded", { preset: () => presetLabel(name) });
   }
 
   function collectNoise() {
@@ -1041,11 +1107,23 @@
     };
   }
 
+  // L'ultimo snapshot reso si conserva: al cambio lingua va riscritto com'era,
+  // non ricalcolato dai controlli, che nel frattempo possono essere cambiati.
+  let lastSnapshot = { snapshot: null, running: false };
+
   function updateSnapshot(snapshot = null, running = false) {
     const config = snapshot || configSnapshot();
+    lastSnapshot = { snapshot: config, running };
     const active = Object.entries(config.noise).filter(([, value]) => value != null && Number(value) !== 0).map(([key]) => key);
-    const label = PRESET_LABELS[config.preset] || "Personalizzato";
-    $("configSnapshot").textContent = `${running ? "Esecuzione congelata" : "Configurazione pronta"}: N=${config.N} · ${label} · ${config.shots} shot · seed ${config.seed}${$("seedLockInput").checked ? " bloccato" : " modificabile"} · ${active.length ? `${active.length} parametri di rumore attivi` : "nessun rumore"}.`;
+    $("configSnapshot").textContent = t("snapshot", {
+      stato: t(running ? "snapshot.frozen" : "snapshot.ready"),
+      N: config.N,
+      preset: presetLabel(config.preset),
+      shots: config.shots,
+      seed: config.seed,
+      lock: t($("seedLockInput").checked ? "snapshot.locked" : "snapshot.unlocked"),
+      rumore: active.length ? t("snapshot.noiseActive", { n: active.length }) : t("snapshot.noiseNone"),
+    });
   }
 
   function setExperimentBusy(busy) {
@@ -1069,7 +1147,7 @@
       toggle.addEventListener("change", () => {
         if (key === "t1_us" || key === "t2_us") {
           setThermalEnabled(toggle.checked);
-          setStatus("experimentStatus", toggle.checked ? "Canale termico T₁/T₂ attivato come coppia fisicamente valida." : "Canale termico T₁/T₂ disattivato.");
+          setStatus("experimentStatus", toggle.checked ? "status.thermalOn" : "status.thermalOff");
         }
         markCustom();
         refreshNoiseUI();
@@ -1092,11 +1170,11 @@
     if (state.experiment.running) return;
     const snapshot = configSnapshot();
     if ((snapshot.noise.t1_us == null) !== (snapshot.noise.t2_us == null)) {
-      setStatus("experimentStatus", "T₁ e T₂ devono essere attivati o disattivati insieme.", "error");
+      setStatus("experimentStatus", "status.thermalPair", null, "error");
       return;
     }
     if (snapshot.noise.t1_us != null && snapshot.noise.t2_us > 2 * snapshot.noise.t1_us) {
-      setStatus("experimentStatus", "Configurazione non fisica: deve valere T₂ ≤ 2T₁.", "error");
+      setStatus("experimentStatus", "status.nonPhysical", null, "error");
       return;
     }
     const requestId = ++state.experiment.requestId;
@@ -1105,7 +1183,8 @@
     state.experiment.controller = controller;
     setExperimentBusy(true);
     updateSnapshot(snapshot, true);
-    setStatus("experimentStatus", `Simulo N=${snapshot.N}: ${snapshot.shots} shot ideali e ${snapshot.shots} rumorosi con seed ${snapshot.seed}…`, "loading");
+    setStatus("experimentStatus", "status.simulating",
+      { N: snapshot.N, shots: snapshot.shots, seed: snapshot.seed }, "loading");
     try {
       const response = await apiJSON("/api/experiment", {
         method: "POST",
@@ -1114,29 +1193,34 @@
         signal: controller.signal,
       });
       if (requestId !== state.experiment.requestId) return;
+      state.experiment.lastResponse = response;
+      state.experiment.lastRenderSnapshot = snapshot;
       renderExperiment(response, snapshot);
       state.experiment.hasResult = true;
       const independent = response.metadata?.simulation_seeds?.independent_streams === true;
-      const streamNote = independent
-        ? "stream ideali e rumorosi indipendenti"
-        : "stesso campione riusato perché il rumore è disattivato";
-      setStatus("experimentStatus", `Confronto completato: ${response.shots ?? response.config?.shots ?? snapshot.shots} shot per distribuzione; seed radice ${response.seed ?? response.config?.seed ?? snapshot.seed}, ${streamNote}.`, "success");
+      setStatus("experimentStatus", "status.experimentDone", {
+        shots: response.shots ?? response.config?.shots ?? snapshot.shots,
+        seed: response.seed ?? response.config?.seed ?? snapshot.seed,
+        note: () => t(independent ? "status.streams.independent" : "status.streams.reused"),
+      }, "success");
     } catch (error) {
-      if (error.name !== "AbortError" && requestId === state.experiment.requestId) setStatus("experimentStatus", `Esperimento non riuscito: ${errorMessage(error)}`, "error");
+      if (error.name !== "AbortError" && requestId === state.experiment.requestId) setStatus("experimentStatus", "status.experimentFailed", { err: errorMessage(error) }, "error");
     } finally {
       if (requestId === state.experiment.requestId) setExperimentBusy(false);
     }
   }
 
   function ciText(value) {
-    if (!value) return "IC 95% non disponibile";
+    if (!value) return t("ci.unavailable");
     const low = Array.isArray(value) ? value[0] : (value.lower ?? value.low ?? value.min);
     const high = Array.isArray(value) ? value[1] : (value.upper ?? value.high ?? value.max);
-    return low == null || high == null ? "IC 95% non disponibile" : `IC 95% ${percentMetric(low)}–${percentMetric(high)}`;
+    return low == null || high == null
+      ? t("ci.unavailable")
+      : t("ci.range", { low: percentMetric(low), high: percentMetric(high) });
   }
 
   function formatFactors(value) {
-    if (value == null || (Array.isArray(value) && value.length === 0)) return "non osservati";
+    if (value == null || (Array.isArray(value) && value.length === 0)) return t("factors.none");
     if (Array.isArray(value)) {
       if (value.length === 2 && value.every((item) => typeof item !== "object")) return `${value[0]} × ${value[1]}`;
       return value.map((item) => Array.isArray(item) ? item.join(" × ") : String(item)).join(", ");
@@ -1174,25 +1258,29 @@
     $("idealCI").textContent = ciText(ideal.factor_ci || ideal.wilson_ci);
     $("noisyCI").textContent = ciText(noisy.factor_ci || noisy.wilson_ci);
     const deltaEl = $("yieldDelta");
-    deltaEl.textContent = delta == null ? "—" : `${delta > 0 ? "+" : ""}${numberIT(delta, 1)} pp`;
+    deltaEl.textContent = delta == null ? "—" : `${delta > 0 ? "+" : ""}${fmtNum(delta, 1)} pp`;
     deltaEl.className = delta == null ? "" : delta < 0 ? "is-negative" : delta > 0 ? "is-positive" : "";
     const deltaCI = comparison.factor_yield_delta_ci;
     $("yieldDeltaCI").textContent = deltaCI
-      ? `IC 95% ${numberIT(Number(deltaCI.low) * 100, 1)}–${numberIT(Number(deltaCI.high) * 100, 1)} pp`
-      : "IC 95% della differenza non disponibile";
+      ? t("ci.deltaRange", {
+          low: fmtNum(Number(deltaCI.low) * 100, 1), high: fmtNum(Number(deltaCI.high) * 100, 1),
+        })
+      : t("ci.deltaUnavailable");
     $("peakMass").textContent = percentMetric(noisy.peak_mass);
-    $("usefulPeakMass").textContent = `picchi utili: rumore ${percentMetric(noisy.useful_peak_mass)} · ideale ${percentMetric(ideal.useful_peak_mass)}`;
-    $("tvdValue").textContent = Number.isFinite(Number(comparison.tvd)) ? numberIT(comparison.tvd, 3) : "—";
+    $("usefulPeakMass").textContent = t("kpi.usefulPeaks", {
+      noisy: percentMetric(noisy.useful_peak_mass), ideal: percentMetric(ideal.useful_peak_mass),
+    });
+    $("tvdValue").textContent = Number.isFinite(Number(comparison.tvd)) ? fmtNum(comparison.tvd, 3) : "—";
 
     const hasDistance = Number.isFinite(Number(comparison.hellinger_distance));
     const hellinger = hasDistance ? comparison.hellinger_distance : comparison.hellinger_fidelity;
-    $("hellingerLabel").textContent = hasDistance ? "Distanza Hellinger" : "Fedeltà Hellinger";
-    $("hellingerValue").textContent = Number.isFinite(Number(hellinger)) ? numberIT(hellinger, 3) : "—";
-    $("hellingerHelp").textContent = hasDistance ? "0 = distribuzioni identiche" : "1 = distribuzioni identiche";
+    $("hellingerLabel").textContent = t(hasDistance ? "kpi.hellinger.distance" : "kpi.hellinger.fidelity");
+    $("hellingerValue").textContent = Number.isFinite(Number(hellinger)) ? fmtNum(hellinger, 3) : "—";
+    $("hellingerHelp").textContent = t(hasDistance ? "kpi.identical0" : "kpi.identical1");
     const idealEntropy = ideal.entropy ?? ideal.entropy_bits;
     const noisyEntropy = noisy.entropy ?? noisy.entropy_bits;
-    $("idealEntropy").textContent = Number.isFinite(Number(idealEntropy)) ? `${numberIT(idealEntropy, 3)} bit` : "—";
-    $("noisyEntropy").textContent = Number.isFinite(Number(noisyEntropy)) ? `${numberIT(noisyEntropy, 3)} bit` : "—";
+    $("idealEntropy").textContent = Number.isFinite(Number(idealEntropy)) ? t("unit.bit", { v: fmtNum(idealEntropy, 3) }) : "—";
+    $("noisyEntropy").textContent = Number.isFinite(Number(noisyEntropy)) ? t("unit.bit", { v: fmtNum(noisyEntropy, 3) }) : "—";
     $("idealFactors").textContent = formatFactors(ideal.factors_found);
     $("noisyFactors").textContent = formatFactors(noisy.factors_found);
 
@@ -1224,20 +1312,23 @@
     const barWidth = Math.max(1.25, barGroupWidth * .38);
     const topIdeal = [...ideal].sort((a, b) => b.probability - a.probability).slice(0, 4).map((bin) => bin.value);
     const topNoisy = [...noisy].sort((a, b) => b.probability - a.probability).slice(0, 4).map((bin) => bin.value);
-    const summary = `Con ${shots} shot per distribuzione, i quattro esiti più probabili sono ${topIdeal.join(", ")} nell’ideale e ${topNoisy.join(", ")} nel caso rumoroso.`;
-    clearSvg(svg, `Distribuzioni ideale e rumorosa su tutti i ${dimension} esiti`, `${summary} Le linee tratteggiate indicano i picchi teorici ${peaks.join(", ")}.`);
+    const summary = t("chart.summary", {
+      shots, ideal: topIdeal.join(", "), noisy: topNoisy.join(", "),
+    });
+    clearSvg(svg, t("chart.svg.titleFull", { n: dimension }),
+      t("chart.desc.peaks", { summary, peaks: peaks.join(", ") }));
 
     for (let i = 0; i <= 4; i += 1) {
       const probability = (yMax * i) / 4;
       const yy = y(probability);
       svg.append(svgNode("line", { x1: margin.left, y1: yy, x2: width - margin.right, y2: yy, stroke: "rgba(188,195,225,.12)", "stroke-width": 1 }));
-      svg.append(svgNode("text", { x: margin.left - 10, y: yy + 4, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "end" }, `${numberIT(probability * 100, probability < .1 ? 1 : 0)}%`));
+      svg.append(svgNode("text", { x: margin.left - 10, y: yy + 4, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "end" }, `${fmtNum(probability * 100, probability < .1 ? 1 : 0)}%`));
     }
 
     peaks.forEach((peak) => {
       const xx = x(peak);
       svg.append(svgNode("line", { x1: xx, y1: margin.top - 7, x2: xx, y2: margin.top + plotHeight, stroke: "var(--cyan)", "stroke-width": 1.3, "stroke-dasharray": "4 5", opacity: .75 }));
-      svg.append(svgNode("text", { x: xx + (peak === 0 ? 4 : 0), y: 17, fill: "var(--cyan)", "font-size": 9, "font-family": "var(--mono)", "text-anchor": peak === 0 ? "start" : "middle" }, `picco ${peak}`));
+      svg.append(svgNode("text", { x: xx + (peak === 0 ? 4 : 0), y: 17, fill: "var(--cyan)", "font-size": 9, "font-family": "var(--mono)", "text-anchor": peak === 0 ? "start" : "middle" }, t("chart.peakTick", { v: peak })));
     });
 
     ideal.forEach((bin, index) => {
@@ -1245,7 +1336,7 @@
       const xx = x(index) - barWidth - .25;
       const yy = y(bin.probability);
       const rect = svgNode("rect", { x: xx, y: yy, width: barWidth, height: margin.top + plotHeight - yy, fill: "var(--violet)", opacity: .76, rx: .7 });
-      rect.append(svgNode("title", {}, `Ideale · y=${index}: ${percentMetric(bin.probability, 2)} (${bin.count} conteggi)`));
+      rect.append(svgNode("title", {}, t("chart.bar.ideal", { v: index, p: percentMetric(bin.probability, 2), c: bin.count })));
       svg.append(rect);
     });
     noisy.forEach((bin, index) => {
@@ -1253,7 +1344,7 @@
       const xx = x(index) + .25;
       const yy = y(bin.probability);
       const rect = svgNode("rect", { x: xx, y: yy, width: barWidth, height: margin.top + plotHeight - yy, fill: "var(--amber)", opacity: .82, rx: .7 });
-      rect.append(svgNode("title", {}, `Rumoroso · y=${index}: ${percentMetric(bin.probability, 2)} (${bin.count} conteggi)`));
+      rect.append(svgNode("title", {}, t("chart.bar.noisy", { v: index, p: percentMetric(bin.probability, 2), c: bin.count })));
       svg.append(rect);
     });
 
@@ -1262,7 +1353,7 @@
       svg.append(svgNode("line", { x1: xx, y1: margin.top + plotHeight, x2: xx, y2: margin.top + plotHeight + 5, stroke: "var(--dim)" }));
       svg.append(svgNode("text", { x: xx, y: height - 27, fill: "var(--muted)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": tick === 0 ? "start" : tick === maxValue ? "end" : "middle" }, tick));
     });
-    svg.append(svgNode("text", { x: margin.left + plotWidth / 2, y: height - 6, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "middle" }, `esito misurato y (0…${maxValue})`));
+    svg.append(svgNode("text", { x: margin.left + plotWidth / 2, y: height - 6, fill: "var(--dim)", "font-size": 10, "font-family": "var(--mono)", "text-anchor": "middle" }, t("chart.xAxis", { max: maxValue })));
     $("chartSummary").textContent = summary;
   }
 
@@ -1273,7 +1364,7 @@
     if (!sample.length) {
       const empty = document.createElement("p");
       empty.className = "details-help";
-      empty.textContent = "Il backend non ha restituito la memoria dei singoli shot.";
+      empty.textContent = t("details.iterations.empty");
       list.append(empty);
       return;
     }
@@ -1281,11 +1372,11 @@
       const ok = Boolean(iteration.ok);
       const cell = document.createElement("span");
       cell.className = `iteration${ok ? " is-ok" : ""}`;
-      cell.title = `Shot ${index + 1}: esito ${iteration.value}; ${ok ? "estrae i fattori" : "non risolutivo"}`;
+      cell.title = t("iteration.title", { i: index + 1, v: iteration.value, esito: t(ok ? "iteration.ok" : "iteration.fail") });
       const value = document.createElement("b");
       value.textContent = String(iteration.value);
       const status = document.createElement("small");
-      status.textContent = ok ? "✓ utile" : "× no";
+      status.textContent = t(ok ? "iteration.okShort" : "iteration.failShort");
       cell.append(value, status);
       list.append(cell);
     });
@@ -1328,23 +1419,24 @@
     state.experiment.controller?.abort();
     state.experiment.requestId += 1;
     state.experiment.hasResult = false;
+    state.experiment.lastResponse = null;
     state.instance = INSTANCES[N] || freeInstance(N);
     state.ideal.classical = null;
     state.ideal.info = null;
     $("emptyResults").hidden = false;
     $("experimentResults").hidden = true;
-    $("chartSummary").textContent = "Nessun dato disponibile per la nuova istanza.";
+    $("chartSummary").textContent = t("chart.noDataInstance");
     updateInstancePresentation();
     if (!INSTANCES[N]) {
       // Il laboratorio del rumore resta sulle tre istanze validate: i circuiti
       // generici stanno sui 26 qubit e il rumore live non li regge.
       $("runExperimentBtn").disabled = true;
-      setStatus("experimentStatus", `Il laboratorio del rumore resta sulle istanze validate 15, 21 e 35: per N=${N} il circuito e' troppo profondo per una simulazione rumorosa dal vivo.`);
+      setStatus("experimentStatus", "status.instanceFree", { N });
     } else {
       $("runExperimentBtn").disabled = false;
       if (N === 21) applyPreset("readout");
       else refreshNoiseUI();
-      setStatus("experimentStatus", `Istanza N=${N} selezionata. Avvia il confronto per generare nuovi dati.`);
+      setStatus("experimentStatus", "status.instanceSelected", { N });
     }
     initIdeal();
     loadCircuitCost(N);
@@ -1364,7 +1456,7 @@
     const submitCustom = () => {
       const N = Number($("customNInput").value);
       if (!Number.isInteger(N) || N < 4 || N > 47) {
-        setStatus("idealStatus", "Inserisci un intero fra 4 e 47: oltre, la simulazione classica non regge una demo dal vivo.", "error");
+        setStatus("idealStatus", "status.customRange", null, "error");
         return;
       }
       selectInstance(N);
@@ -1375,7 +1467,55 @@
     });
   }
 
+  /* Il pulsante mostra la bandiera della lingua ATTIVA: premerlo passa all'altra. */
+  function renderLangToggle() {
+    const lang = window.I18N.lang();
+    $("flagIt").hidden = lang !== "it";
+    $("flagEn").hidden = lang !== "en";
+    $("langCode").textContent = lang.toUpperCase();
+  }
+
+  /* Cambiare lingua non ricarica la pagina e non ripete una sola chiamata all'API:
+     il testo statico lo riscrive I18N.applyStatic, qui si riscrive dallo stesso
+     stato tutto cio' che ha generato JavaScript. Senza questo passaggio la pagina
+     resterebbe mezza italiana finche' non si ripete ogni azione. */
+  function relocalize() {
+    renderLangToggle();
+    const congelato = lastSnapshot;
+    statusState.forEach((_, id) => renderStatus(id));
+    updateInstancePresentation();          // rifa' anche resetPipeline()
+    if (state.experiment.running) updateNoiseAnatomy();
+    else refreshNoiseUI();                 // i controlli non vanno riabilitati a meta' run
+    if (congelato.snapshot) updateSnapshot(congelato.snapshot, congelato.running);
+
+    if (state.ideal.info && state.ideal.bloch) {
+      renderCircuit(state.ideal.info, state.ideal.bloch);
+      renderStageExplanation(state.ideal.info.stages, state.ideal.stage);
+      if (state.ideal.bloch.kind === "measure" && state.ideal.bloch.measured_shot) {
+        renderPipeline(state.ideal.bloch.measured_shot, false);
+      }
+    }
+    if (state.ideal.classical && !$("classicPanel").hidden) renderClassicalPanel(state.ideal.classical);
+    if (state.bloch.noisy) renderBlochStage();
+    if (state.experiment.lastResponse) {
+      renderExperiment(state.experiment.lastResponse, state.experiment.lastRenderSnapshot);
+    }
+    // applyStatic ha appena rimesso l'etichetta di riposo su entrambi i pulsanti.
+    $("playStageBtn").textContent = t(state.ideal.playing ? "btn.pause" : "btn.playAuto");
+    $("noisePlayBtn").textContent = t(state.bloch.playing ? "btn.pause" : "btn.playAuto");
+    updateIdealButtons();
+    updateBlochButtons();
+  }
+
+  function setupLangToggle() {
+    $("langToggle").addEventListener("click", () => window.I18N.toggle());
+    window.I18N.onChange(relocalize);
+    renderLangToggle();
+  }
+
   function init() {
+    window.I18N.applyStatic();
+    setupLangToggle();
     setupTabs();
     setupIdealControls();
     setupResultPopup();
