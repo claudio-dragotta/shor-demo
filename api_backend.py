@@ -15,8 +15,12 @@ esecuzioni Aer per la statistica restano isolate in sottoprocesso (``run_pair_is
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
+import json
+import logging
 import math
+import os
 import platform
 import secrets
 from functools import lru_cache
@@ -38,6 +42,9 @@ from experiment_backend import (
     run_bloch_isolated,
     run_pair_isolated,
 )
+
+LOGGER = logging.getLogger(__name__)
+_HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Assenza di rumore: base su cui normalise_noise_config completa la richiesta.
 ZERO_NOISE = {
@@ -199,9 +206,44 @@ def circuit_cost(N: int) -> dict:
     }
 
 
+def firma_rumore(N: int, config: dict) -> str:
+    """Chiave stabile di una configurazione di rumore, per il precalcolo su file.
+
+    Deve valere fra processi e fra riavvii, quindi non puo' essere hash(): si
+    serializza in JSON canonico e si prende lo SHA-256. `None` e 0.0 restano
+    distinti -- T1 spento non e' T1 a zero.
+    """
+    canonico = json.dumps({"N": int(N), "noise": config}, sort_keys=True,
+                          separators=(",", ":"), default=str)
+    return hashlib.sha256(canonico.encode("utf-8")).hexdigest()
+
+
+@lru_cache(maxsize=1)
+def _bloch_precalcolato() -> dict:
+    """Sfere dei preset congelate a build time da precalcola_bloch.py.
+
+    L'evoluzione della matrice densita' e' deterministica e i preset sono valori
+    fissi: ricalcolarli a ogni riavvio significa far aspettare l'utente per
+    riottenere numeri identici. Su Render, con una CPU sola, sono due minuti.
+
+    L'assenza del file non e' un errore: si torna semplicemente a simulare.
+    """
+    percorso = os.path.join(_HERE, "precomputed", "bloch.json")
+    try:
+        with open(percorso, encoding="utf-8") as fh:
+            return json.load(fh).get("voci", {})
+    except (OSError, ValueError) as exc:
+        LOGGER.info("Nessun precalcolo di Bloch utilizzabile (%s): si simula.", type(exc).__name__)
+        return {}
+
+
 @lru_cache(maxsize=24)
 def _noisy_bloch_cached(N: int, noise_key: tuple) -> dict:
-    return run_bloch_isolated(N=N, noise=dict(noise_key))
+    config = dict(noise_key)
+    voce = _bloch_precalcolato().get(firma_rumore(N, config))
+    if voce is not None:
+        return voce["risultato"]
+    return run_bloch_isolated(N=N, noise=config)
 
 
 def noisy_bloch(N: int, noise: dict | None = None) -> dict:
