@@ -69,18 +69,28 @@ class ExperimentRequest(BaseModel):
 
 
 @app.middleware("http")
-async def no_cache_api(request, call_next):
-    """Vieta la cache alle risposte dell'API, non agli asset statici.
+async def cache_policy(request, call_next):
+    """Politica di cache: mai per l'API, sempre da rivalidare per gli asset.
 
-    Le risposte di /api/* dipendono da seed e rumore: riusarle sarebbe sbagliato.
-    Gli asset invece cambiano solo a ogni deploy, e ``StaticFiles`` emette gia'
-    ETag e Last-Modified: il browser li rivalida e riceve 304 finche' non
-    cambiano, cosi' un visitatore non riscarica app.js a ogni caricamento.
-    Nessun ``max-age`` fisso, che dopo un deploy servirebbe file scaduti.
+    Le risposte di /api/* dipendono da seed e rumore: riusarle sarebbe sbagliato,
+    quindi ``no-store``.
+
+    Sugli asset la versione precedente si limitava a ETag e Last-Modified,
+    contando sul fatto che il browser rivalidasse. Non e' cosi': **senza**
+    ``Cache-Control`` il browser applica la cache euristica (RFC 9111) e puo'
+    considerare fresca una risposta per giorni, senza chiedere nulla al server.
+    Dopo un deploy si vedeva ancora la pagina vecchia -- osservato: index.html e
+    style.css nuovi sul server, ma il browser continuava a mostrare i vecchi
+    finche' non si forzava il ricaricamento.
+
+    ``no-cache`` non vieta la cache: obbliga a rivalidare prima di riusarla. Il
+    browser manda If-None-Match, riceve 304 e non riscarica nulla se il file non
+    e' cambiato. Costa un giro di rete e garantisce che un deploy si veda subito.
     """
     resp = await call_next(request)
-    if request.url.path.startswith("/api/"):
-        resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Cache-Control"] = (
+        "no-store" if request.url.path.startswith("/api/") else "no-cache"
+    )
     return resp
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
