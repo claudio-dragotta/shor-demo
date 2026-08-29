@@ -1467,11 +1467,20 @@
     });
   }
 
+  /* Le bandiere sono <svg>, e `hidden` e' una proprieta' di HTMLElement: su un
+     elemento SVG assegnarla crea una proprieta' JS che NON si riflette
+     sull'attributo, quindi la regola CSS [hidden] non scatta e restano visibili
+     tutte e due. Va scritto l'attributo. */
+  function mostraBandiera(elemento, visibile) {
+    if (visibile) elemento.removeAttribute("hidden");
+    else elemento.setAttribute("hidden", "");
+  }
+
   /* Il pulsante mostra la bandiera della lingua ATTIVA: premerlo passa all'altra. */
   function renderLangToggle() {
     const lang = window.I18N.lang();
-    $("flagIt").hidden = lang !== "it";
-    $("flagEn").hidden = lang !== "en";
+    mostraBandiera($("flagIt"), lang === "it");
+    mostraBandiera($("flagEn"), lang === "en");
     $("langCode").textContent = lang.toUpperCase();
   }
 
