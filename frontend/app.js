@@ -992,14 +992,15 @@
       "is-info", t("popup.decoherence.kicker"));
   }
 
+  function mostraDettaglioRumore(aperto) {
+    $("noiseDetail").hidden = !aperto;
+    $("noiseDetailBtn").setAttribute("aria-expanded", String(aperto));
+    $("noiseDetailBtn").classList.toggle("is-open", aperto);
+  }
+
   function setupBlochView() {
     $("noisePlayBtn").addEventListener("click", toggleNoisePlayback);
-    $("noiseDetailBtn").addEventListener("click", () => {
-      const aperto = $("noiseDetail").hidden;
-      $("noiseDetail").hidden = !aperto;
-      $("noiseDetailBtn").setAttribute("aria-expanded", String(aperto));
-      $("noiseDetailBtn").classList.toggle("is-open", aperto);
-    });
+    $("noiseDetailBtn").addEventListener("click", () => mostraDettaglioRumore($("noiseDetail").hidden));
     $("viewNoisyBtn").addEventListener("click", () => setBlochMode("noisy"));
     $("viewCompareBtn").addEventListener("click", () => setBlochMode("compare"));
     $("noisePrevBtn").addEventListener("click", () => { stopNoisePlayback(); setBlochStage(state.bloch.stage - 1); });
@@ -1129,6 +1130,7 @@
   function setExperimentBusy(busy) {
     state.experiment.running = busy;
     $("experimentControls").disabled = busy;
+    $("emptyRunBtn").disabled = busy;
     $("instanceSelect").disabled = busy;
     $$(".preset").forEach((button) => { button.disabled = busy; });
     if (!busy) refreshNoiseUI();
@@ -1163,6 +1165,16 @@
       runExperiment();
     });
     $("runExperimentBtn").addEventListener("click", runExperiment);
+    /* Il comando che avvia il confronto viveva solo dentro il pannello di
+       dettaglio, che parte chiuso: lo stato vuoto invitava a premere un pulsante
+       fuori dallo schermo, e chi premeva "Avvia automatico" -- l'unico visibile
+       -- animava le sfere senza produrre alcun risultato qui sotto. Questo e' lo
+       stesso comando dove l'utente sta guardando, e apre il pannello cosi' si
+       vedono configurazione usata e riga di stato mentre gira. */
+    $("emptyRunBtn").addEventListener("click", () => {
+      mostraDettaglioRumore(true);
+      runExperiment();
+    });
     applyPreset("uc1");
   }
 
@@ -1431,9 +1443,11 @@
       // Il laboratorio del rumore resta sulle tre istanze validate: i circuiti
       // generici stanno sui 26 qubit e il rumore live non li regge.
       $("runExperimentBtn").disabled = true;
+      $("emptyRunBtn").disabled = true;
       setStatus("experimentStatus", "status.instanceFree", { N });
     } else {
       $("runExperimentBtn").disabled = false;
+      $("emptyRunBtn").disabled = false;
       if (N === 21) applyPreset("readout");
       else refreshNoiseUI();
       setStatus("experimentStatus", "status.instanceSelected", { N });
