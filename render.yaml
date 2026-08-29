@@ -1,5 +1,17 @@
 # Render Blueprint — demo Shor (FastAPI + Qiskit).
-# Deploy: Render → New → Blueprint → seleziona questo repo. Render legge questo file.
+#
+# ATTENZIONE: il servizio shor-demo-6knp NON e' stato creato da questo Blueprint,
+# quindi Render IGNORA questo file. Verificato il 29 agosto 2026: cambiare qui
+# `plan` e pushare non ha spostato nulla, il servizio e' rimasto su 0.5c-512mb.
+# Lo stesso vale per `autoDeploy`, che qui e' inerte: l'auto-deploy va acceso
+# nelle impostazioni del servizio, altrimenti ogni push richiede un Deploy manuale.
+#
+# Per QUEL servizio si usa la dashboard:
+#   piano       -> pagina del servizio, riquadro "Compute" (non "Instance Type")
+#   auto-deploy -> impostazioni di build/deploy del servizio
+#
+# Questo file resta valido come descrizione dell'infrastruttura e per chi
+# ricreasse il servizio con Render → New → Blueprint.
 services:
   - type: web
     name: shor-demo
