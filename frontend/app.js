@@ -1214,6 +1214,7 @@
       renderExperiment(response, snapshot);
       renderEntropia();
       renderGauge();
+      renderProvenienza();
       state.experiment.hasResult = true;
       const independent = response.metadata?.simulation_seeds?.independent_streams === true;
       setStatus("experimentStatus", "status.experimentDone", {
@@ -1496,6 +1497,95 @@
     else elemento.setAttribute("hidden", "");
   }
 
+  /* Provenienza del risultato mostrato.
+
+     Serve perche' uno screenshot dei KPI, da solo, non e' citabile: seed e
+     configurazione vivevano nella riga di stato dentro il pannello di dettaglio,
+     che si richiude. Qui stanno accanto ai numeri che hanno prodotto, e si
+     copiano in un colpo solo. Tutti i campi arrivano dalla risposta dell'API:
+     nessuno viene ricostruito o indovinato. */
+  function vociProvenienza(risposta) {
+    if (!risposta) return [];
+    const cfg = risposta.config || {};
+    const meta = risposta.metadata || {};
+    const ver = meta.versions || {};
+    const circ = (meta.circuit || {});
+    const shots = cfg.shots ?? risposta.shots;
+    const voci = [];
+
+    voci.push([t("prov.instance"), t("prov.instanceV", {
+      N: cfg.N, a: cfg.a, t: cfg.n_count })]);
+    voci.push([t("prov.sample"), t("prov.sampleV", { shots, seed: cfg.seed })]);
+
+    const nOk = risposta.ideal && risposta.ideal.n_ok;
+    const nOkR = risposta.noisy && risposta.noisy.n_ok;
+    if (Number.isFinite(Number(nOk)) && Number.isFinite(Number(nOkR))) {
+      voci.push([t("prov.counts"), t("prov.countsV", { i: nOk, n: nOkR, shots })]);
+    }
+
+    // Solo i canali davvero accesi, con il valore che avevano al lancio.
+    const attivi = Object.entries(cfg.noise || {})
+      .filter(([, v]) => v != null && Number(v) !== 0)
+      .map(([k, v]) => {
+        const nome = t(`ch.${k}.name`);
+        const fmt = CHANNELS[k] && CHANNELS[k].format;
+        return `${nome} ${fmt ? fmt(v) : v}`;
+      });
+    voci.push([t("prov.channels"), attivi.length ? attivi.join(" · ") : t("prov.channelsNone")]);
+
+    if (circ.basis_gates) {
+      voci.push([t("prov.compile"), t("prov.compileV", {
+        basi: circ.basis_gates.join("·"), seed: circ.seed_transpiler })]);
+    }
+    voci.push([t("prov.engine"), t("prov.engineV", {
+      qiskit: ver.qiskit || "—", aer: ver.qiskit_aer || "—",
+      python: ver.python || "—", schema: risposta.schema_version || "—" })]);
+
+    const conf = risposta.ideal && risposta.ideal.wilson_ci && risposta.ideal.wilson_ci.confidence;
+    const metodo = risposta.comparison && risposta.comparison.factor_yield_delta_ci
+      && risposta.comparison.factor_yield_delta_ci.method;
+    if (conf || metodo) {
+      voci.push([t("prov.intervals"), t("prov.intervalsV", {
+        conf: conf ? percentMetric(conf, 0) : "—", metodo: metodo || "—" })]);
+    }
+
+    // Una riga sola, fattuale: dice cos'e' il modello, non cosa gli manca.
+    voci.push([t("prov.model"), t("prov.modelV")]);
+    return voci;
+  }
+
+  function renderProvenienza() {
+    const lista = $("provList");
+    if (!lista) return;
+    lista.replaceChildren();
+    vociProvenienza(state.experiment.lastResponse).forEach(([etichetta, valore]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = etichetta;
+      const dd = document.createElement("dd");
+      dd.textContent = valore;
+      lista.append(dt, dd);
+    });
+  }
+
+  function setupProvenienza() {
+    const bottone = $("provCopyBtn");
+    if (!bottone) return;
+    bottone.addEventListener("click", async () => {
+      const testo = vociProvenienza(state.experiment.lastResponse)
+        .map(([k, v]) => `${k}: ${v}`).join("\n");
+      if (!testo) return;
+      try {
+        await navigator.clipboard.writeText(testo);
+        const prima = bottone.textContent;
+        bottone.textContent = t("prov.copied");
+        window.setTimeout(() => { bottone.textContent = prima; }, 1600);
+      } catch (error) {
+        /* Clipboard negata (contesto non sicuro, permesso rifiutato): il
+           riepilogo resta comunque leggibile e selezionabile nella lista. */
+      }
+    });
+  }
+
   // --- Curve validate della tesi -------------------------------------------
   // Non sono ricalcolate qui: arrivano da campagne gia' eseguite e verificate,
   // estratte in precomputed/tesi.json da estrai_dati_tesi.py. La sezione resta
@@ -1522,6 +1612,7 @@
     renderCosto(state.tesi.qec.surface);
     renderEntropia();
     renderGauge();
+    renderProvenienza();
   }
 
   /* Entropia della distribuzione appena misurata: due barre sulla stessa scala,
@@ -1968,6 +2059,7 @@
     setupTabs();
     setupIdealControls();
     setupResultPopup();
+    setupProvenienza();
     setupBlochView();
     setupStickyTabs();
     loadCircuitCost(state.instance.N);

@@ -364,6 +364,19 @@ input[type="checkbox"] { width: 17px; height: 17px; margin: 0; accent-color: var
 .thesis-card h3 { margin: 0 0 6px; font: 600 1.02rem/1.25 var(--serif); }
 .thesis-card .details-help { margin: 0 0 14px; }
 .thesis-chart { width: 100%; min-width: 620px; height: auto; }
+.provenance {
+  margin-top: 16px;
+  padding: 15px 17px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(10, 11, 19, .42);
+}
+.provenance-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.provenance-head h3 { margin: 0; font: 600 .98rem/1.2 var(--serif); }
+.provenance-head .button { min-height: 34px; padding: 6px 12px; font-size: .7rem; }
+.provenance-list { display: grid; grid-template-columns: 148px 1fr; gap: 6px 14px; margin: 0; }
+.provenance-list dt { color: var(--dim); font: 750 .62rem/1.6 var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+.provenance-list dd { margin: 0; color: var(--muted); font: 500 .69rem/1.6 var(--mono); overflow-wrap: anywhere; }
 .thesis-verdict {
   margin: 12px 0 0;
   padding: 10px 13px;
