@@ -203,6 +203,17 @@ def api_experiment(request: ExperimentRequest):
         raise HTTPException(status_code=500, detail="Errore interno durante la simulazione.")
 
 
+@app.get("/api/curve-tesi")
+def api_curve_tesi():
+    """Curve validate della tesi: QEC (M5/M6/M7) e sensibilita' di Shor (M8).
+
+    Dato statico letto da file, non una simulazione: nessun semaforo, nessun
+    costo. Vuoto se il file non e' stato generato -- il frontend nasconde la
+    sezione invece di mostrare grafici senza dati.
+    """
+    return api.curve_tesi()
+
+
 @app.get("/health")
 def health():
     return JSONResponse({"ok": True})

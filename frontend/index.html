@@ -346,6 +346,66 @@
             </div>
           </div>
         </section>
+
+        <section class="panel thesis-panel" id="thesisPanel" aria-labelledby="thesisTitle" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="kicker" data-i18n="thesis.kicker">Che cosa dimostra questo studio</p>
+              <h2 id="thesisTitle" data-i18n="thesis.title">Dal rumore alla correzione, e ritorno a Shor</h2>
+            </div>
+          </div>
+          <p class="panel-intro" data-i18n="thesis.intro"></p>
+
+          <article class="thesis-card">
+            <h3 data-i18n="thesis.entropy.title"></h3>
+            <p class="details-help" data-i18n="thesis.entropy.help"></p>
+            <div id="entropyPanel"></div>
+          </article>
+
+          <article class="thesis-card">
+            <h3 data-i18n="thesis.gauge.title"></h3>
+            <p class="details-help" data-i18n="thesis.gauge.help"></p>
+            <div class="chart-scroller" tabindex="0">
+              <svg id="gaugeChart" class="thesis-chart" viewBox="0 0 920 150" role="img"
+                   aria-labelledby="gaugeTitle gaugeDesc">
+                <title id="gaugeTitle"></title><desc id="gaugeDesc"></desc>
+              </svg>
+            </div>
+          </article>
+
+          <article class="thesis-card">
+            <h3 data-i18n="thesis.qec.title"></h3>
+            <p class="details-help" data-i18n="thesis.qec.help"></p>
+            <div class="chart-scroller" tabindex="0">
+              <svg id="qecChart" class="thesis-chart" viewBox="0 0 920 430" role="img"
+                   aria-labelledby="qecChartTitle qecChartDesc">
+                <title id="qecChartTitle"></title><desc id="qecChartDesc"></desc>
+              </svg>
+            </div>
+            <p class="thesis-verdict" id="qecVerdict"></p>
+            <p class="thesis-source" id="qecSource"></p>
+          </article>
+
+          <article class="thesis-card">
+            <h3 data-i18n="thesis.shor.title"></h3>
+            <p class="details-help" data-i18n="thesis.shor.help"></p>
+            <div class="chart-scroller" tabindex="0">
+              <svg id="shorChart" class="thesis-chart" viewBox="0 0 920 390" role="img"
+                   aria-labelledby="shorChartTitle shorChartDesc">
+                <title id="shorChartTitle"></title><desc id="shorChartDesc"></desc>
+              </svg>
+            </div>
+            <p class="thesis-source" id="shorSource"></p>
+          </article>
+
+          <article class="thesis-card">
+            <h3 data-i18n="thesis.cost.title"></h3>
+            <p class="details-help" data-i18n="thesis.cost.help"></p>
+            <div id="costPanel" class="cost-grid"></div>
+          </article>
+
+          <p class="thesis-caveat" data-i18n-html="thesis.caveat"></p>
+        </section>
       </section>
     </main>
 

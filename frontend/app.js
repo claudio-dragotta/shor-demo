@@ -19,6 +19,7 @@
     experiment: { controller: null, requestId: 0, running: false, preset: "uc1", hasResult: false,
                   lastResponse: null, lastRenderSnapshot: null },
     cost: null,
+    tesi: null,
     // Vista di Bloch sotto rumore: sempre N=15, l'unica istanza in cui la
     // matrice densita' resta calcolabile.
     bloch: { info: null, noisy: null, ideal: null, stage: 0, mode: "noisy", loading: false, token: 0, playing: false, timer: null },
@@ -1068,6 +1069,7 @@
     });
     refreshNoiseUI();
     loadNoisyBloch();
+    if (state.tesi) renderQecChart(state.tesi.qec);
     setStatus("experimentStatus", "status.presetLoaded", { preset: () => presetLabel(name) });
   }
 
@@ -1145,6 +1147,7 @@
         CHANNELS[key].format && ($(CHANNELS[key].output).textContent = CHANNELS[key].format(input.value));
         markCustom();
         updateSnapshot();
+        if (state.tesi) renderQecChart(state.tesi.qec);
       });
       toggle.addEventListener("change", () => {
         if (key === "t1_us" || key === "t2_us") {
@@ -1153,6 +1156,7 @@
         }
         markCustom();
         refreshNoiseUI();
+        if (state.tesi) renderQecChart(state.tesi.qec);
       });
     });
     $("shotsInput").addEventListener("change", updateSnapshot);
@@ -1208,6 +1212,8 @@
       state.experiment.lastResponse = response;
       state.experiment.lastRenderSnapshot = snapshot;
       renderExperiment(response, snapshot);
+      renderEntropia();
+      renderGauge();
       state.experiment.hasResult = true;
       const independent = response.metadata?.simulation_seeds?.independent_streams === true;
       setStatus("experimentStatus", "status.experimentDone", {
@@ -1490,6 +1496,425 @@
     else elemento.setAttribute("hidden", "");
   }
 
+  // --- Curve validate della tesi -------------------------------------------
+  // Non sono ricalcolate qui: arrivano da campagne gia' eseguite e verificate,
+  // estratte in precomputed/tesi.json da estrai_dati_tesi.py. La sezione resta
+  // nascosta se il file non c'e': meglio assente che con grafici vuoti.
+  const LOG10 = (x) => Math.log(x) / Math.LN10;
+  const APICE = (n) => String(n).replace(/\d/g, (c) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[+c]);
+
+  async function loadCurveTesi() {
+    try {
+      const dati = await apiJSON("/api/curve-tesi");
+      if (!dati || !dati.qec || !dati.shor_logico) return;
+      state.tesi = dati;
+      $("thesisPanel").hidden = false;
+      renderCurveTesi();
+    } catch (error) {
+      state.tesi = null;   // sezione assente: non e' un errore da mostrare
+    }
+  }
+
+  function renderCurveTesi() {
+    if (!state.tesi) return;
+    renderQecChart(state.tesi.qec);
+    renderShorChart(state.tesi.shor_logico);
+    renderCosto(state.tesi.qec.surface);
+    renderEntropia();
+    renderGauge();
+  }
+
+  /* Entropia della distribuzione appena misurata: due barre sulla stessa scala,
+     0..n_count bit. L'uniforme e' il massimo, cioe' informazione azzerata. */
+  function renderEntropia() {
+    const host = $("entropyPanel");
+    if (!host) return;
+    host.replaceChildren();
+    const risposta = state.experiment.lastResponse;
+    if (!risposta) {
+      const vuoto = document.createElement("p");
+      vuoto.className = "details-help";
+      vuoto.textContent = t("thesis.entropy.empty");
+      host.append(vuoto);
+      return;
+    }
+    const bitMax = Number(risposta.config && risposta.config.n_count) || currentInstance().nCount;
+    const righe = [
+      { chiave: "thesis.entropy.ideal", classe: "is-ideal",
+        v: Number(risposta.ideal && (risposta.ideal.entropy_bits ?? risposta.ideal.entropy)) },
+      { chiave: "thesis.entropy.noisy", classe: "is-noisy",
+        v: Number(risposta.noisy && (risposta.noisy.entropy_bits ?? risposta.noisy.entropy)) },
+    ];
+    righe.forEach((r) => {
+      if (!Number.isFinite(r.v)) return;
+      const riga = document.createElement("div");
+      riga.className = "entropy-row";
+      const et = document.createElement("small");
+      et.textContent = t(r.chiave);
+      const pista = document.createElement("div");
+      pista.className = "entropy-track";
+      const riemp = document.createElement("div");
+      riemp.className = "entropy-fill " + r.classe;
+      riemp.style.width = Math.max(0, Math.min(100, (r.v / bitMax) * 100)).toFixed(1) + "%";
+      pista.append(riemp);
+      const val = document.createElement("b");
+      val.textContent = t("thesis.entropy.unit", { v: fmtNum(r.v, 2), max: bitMax });
+      riga.append(et, pista, val);
+      host.append(riga);
+    });
+  }
+
+  /* Errore logico contro errore fisico, log-log. Le curve misurate stanno tutte
+     insieme perche' il confronto e' il punto: sotto soglia la distanza compra
+     soppressione, sopra soglia la peggiora. */
+  function renderQecChart(qec) {
+    const svg = $("qecChart");
+    if (!svg) return;
+    const W = 920, H = 430;
+    const m = { top: 22, right: 176, bottom: 54, left: 66 };
+    const pw = W - m.left - m.right, ph = H - m.top - m.bottom;
+    const xmin = 1e-3, xmax = 0.5, ymin = 1e-6, ymax = 1;
+    const X = (p) => m.left + (LOG10(p) - LOG10(xmin)) / (LOG10(xmax) - LOG10(xmin)) * pw;
+    const Y = (p) => m.top + ph - (LOG10(p) - LOG10(ymin)) / (LOG10(ymax) - LOG10(ymin)) * ph;
+
+    clearSvg(svg, t("thesis.qec.title"), t("thesis.qec.help"));
+
+    for (let e = -6; e <= 0; e += 1) {
+      const y = Y(Math.pow(10, e));
+      svg.append(svgNode("line", { x1: m.left, y1: y, x2: m.left + pw, y2: y,
+        stroke: "rgba(188,195,225,.10)", "stroke-width": 1 }));
+      svg.append(svgNode("text", { x: m.left - 9, y: y + 4, fill: "var(--dim)", "font-size": 10,
+        "font-family": "var(--mono)", "text-anchor": "end" },
+        e === 0 ? "1" : "10⁻" + APICE(-e)));
+    }
+    [1e-3, 1e-2, 1e-1, 0.5].forEach((p) => {
+      const x = X(p);
+      svg.append(svgNode("line", { x1: x, y1: m.top, x2: x, y2: m.top + ph,
+        stroke: "rgba(188,195,225,.08)", "stroke-width": 1 }));
+      svg.append(svgNode("text", { x, y: H - 30, fill: "var(--muted)", "font-size": 10,
+        "font-family": "var(--mono)", "text-anchor": "middle" }, percentMetric(p, p < 0.01 ? 1 : 0)));
+    });
+
+    // p_L = p: la retta che la correzione deve battere.
+    svg.append(svgNode("line", { x1: X(xmin), y1: Y(xmin), x2: X(xmax), y2: Y(xmax),
+      stroke: "var(--dim)", "stroke-width": 1.4, "stroke-dasharray": "5 5" }));
+
+    const serie = [];
+    const traccia = (punti, colore, etichetta) => {
+      const validi = (punti || []).filter((q) => q.p >= xmin && q.p <= xmax && q.pL > 0);
+      if (!validi.length) return;
+      const d = validi.map((q, i) => (i ? "L" : "M") + X(q.p).toFixed(1) + "," +
+        Y(Math.max(ymin, q.pL)).toFixed(1)).join(" ");
+      svg.append(svgNode("path", { d, fill: "none", stroke: colore, "stroke-width": 1.9 }));
+      validi.forEach((q) => {
+        const c = svgNode("circle", { cx: X(q.p).toFixed(1), cy: Y(Math.max(ymin, q.pL)).toFixed(1),
+          r: 2.9, fill: colore });
+        c.append(svgNode("title", {}, etichetta + " · p=" + q.p + " → p_L=" + q.pL));
+        svg.append(c);
+      });
+      serie.push({ etichetta, colore });
+    };
+
+    traccia(qec.repetition.punti, "var(--violet)", t("thesis.qec.repetition"));
+    traccia(qec.steane.punti, "var(--pink)", t("thesis.qec.steane"));
+    const coloriD = ["var(--blue)", "var(--cyan)", "var(--green)", "var(--amber)"];
+    Object.keys(qec.surface.distanze).forEach((d, i) => {
+      traccia(qec.surface.distanze[d], coloriD[i % coloriD.length], t("thesis.qec.surface", { d }));
+    });
+
+    // La soglia: a destra di questa linea aumentare la distanza peggiora.
+    const xs = X(qec.surface.p_th);
+    svg.append(svgNode("line", { x1: xs, y1: m.top, x2: xs, y2: m.top + ph,
+      stroke: "var(--red)", "stroke-width": 1.3, "stroke-dasharray": "3 4", opacity: .8 }));
+    svg.append(svgNode("text", { x: xs + 5, y: m.top + 12, fill: "var(--red)", "font-size": 9.5,
+      "font-family": "var(--mono)" },
+      t("thesis.qec.threshold", { v: percentMetric(qec.surface.p_th, 2) })));
+
+    let ly = m.top + 6;
+    svg.append(svgNode("text", { x: m.left + pw + 16, y: ly, fill: "var(--dim)", "font-size": 9.5,
+      "font-family": "var(--mono)" }, t("thesis.qec.none")));
+    svg.append(svgNode("line", { x1: m.left + pw + 16, y1: ly + 6, x2: m.left + pw + 40, y2: ly + 6,
+      stroke: "var(--dim)", "stroke-width": 1.4, "stroke-dasharray": "5 5" }));
+    ly += 24;
+    serie.forEach((s) => {
+      svg.append(svgNode("line", { x1: m.left + pw + 16, y1: ly, x2: m.left + pw + 40, y2: ly,
+        stroke: s.colore, "stroke-width": 2.4 }));
+      svg.append(svgNode("text", { x: m.left + pw + 46, y: ly + 3.5, fill: "var(--muted)",
+        "font-size": 10, "font-family": "var(--mono)" }, s.etichetta));
+      ly += 19;
+    });
+
+    svg.append(svgNode("text", { x: m.left + pw / 2, y: H - 9, fill: "var(--dim)", "font-size": 10,
+      "font-family": "var(--mono)", "text-anchor": "middle" }, t("thesis.qec.axisX")));
+    svg.append(svgNode("text", { x: 15, y: m.top + ph / 2, fill: "var(--dim)", "font-size": 10,
+      "font-family": "var(--mono)", "text-anchor": "middle",
+      transform: "rotate(-90 15 " + (m.top + ph / 2) + ")" }, t("thesis.qec.axisY")));
+
+    marcaSogliaQec(svg, { X, xmin, xmax, top: m.top, ph }, qec);
+
+    $("qecSource").textContent = t("thesis.qec.source", {
+      shots: fmtNum(qec.steane.shots, 0),
+      A: fmtNum(qec.surface.A, 4),
+      pth: percentMetric(qec.surface.p_th, 2),
+      rms: fmtNum(qec.surface.rms_ln, 3),
+    });
+  }
+
+  /* Resa di Shor contro errore logico. L'asse x e' logaritmico ma la curva parte
+     da p_L=0, che su un log non esiste: il punto ideale sta in una tacca a se',
+     all'estrema sinistra, separata da uno stacco visibile. */
+  function renderShorChart(shor) {
+    const svg = $("shorChart");
+    if (!svg) return;
+    const W = 920, H = 390;
+    const m = { top: 22, right: 150, bottom: 58, left: 62 };
+    const pw = W - m.left - m.right, ph = H - m.top - m.bottom;
+    const stacco = 44;
+    const xmin = 1e-4, xmax = 0.5;
+    const X = (pL) => (pL <= 0 ? m.left + 12
+      : m.left + stacco + (LOG10(pL) - LOG10(xmin)) / (LOG10(xmax) - LOG10(xmin)) * (pw - stacco));
+    const ytop = 0.8;
+    const Y = (v) => m.top + ph - (v / ytop) * ph;
+
+    clearSvg(svg, t("thesis.shor.title"), t("thesis.shor.help"));
+
+    for (let g = 0; g <= 8; g += 1) {
+      const v = (ytop * g) / 8, y = Y(v);
+      svg.append(svgNode("line", { x1: m.left, y1: y, x2: m.left + pw, y2: y,
+        stroke: "rgba(188,195,225,.10)", "stroke-width": 1 }));
+      svg.append(svgNode("text", { x: m.left - 9, y: y + 4, fill: "var(--dim)", "font-size": 10,
+        "font-family": "var(--mono)", "text-anchor": "end" }, percentMetric(v, 0)));
+    }
+    svg.append(svgNode("line", { x1: m.left + stacco - 14, y1: m.top, x2: m.left + stacco - 14,
+      y2: m.top + ph, stroke: "rgba(188,195,225,.22)", "stroke-width": 1, "stroke-dasharray": "2 4" }));
+    svg.append(svgNode("text", { x: m.left + 12, y: H - 34, fill: "var(--muted)", "font-size": 10,
+      "font-family": "var(--mono)", "text-anchor": "middle" }, "0"));
+    [1e-4, 1e-3, 1e-2, 1e-1, 0.5].forEach((p) => {
+      const x = X(p);
+      svg.append(svgNode("line", { x1: x, y1: m.top, x2: x, y2: m.top + ph,
+        stroke: "rgba(188,195,225,.08)", "stroke-width": 1 }));
+      svg.append(svgNode("text", { x, y: H - 34, fill: "var(--muted)", "font-size": 10,
+        "font-family": "var(--mono)", "text-anchor": "middle" }, String(p)));
+    });
+
+    // Il pavimento: sotto non si scende, perche' anche tirando a caso il
+    // post-processing estrae i fattori da 63 esiti su 256.
+    const yf = Y(shor.pavimento_uniforme);
+    svg.append(svgNode("line", { x1: m.left, y1: yf, x2: m.left + pw, y2: yf,
+      stroke: "var(--red)", "stroke-width": 1.4, "stroke-dasharray": "6 5", opacity: .85 }));
+
+    const punti = shor.punti || [];
+    const d = punti.map((q, i) => (i ? "L" : "M") + X(q.pL).toFixed(1) + "," + Y(q.P).toFixed(1)).join(" ");
+    svg.append(svgNode("path", { d, fill: "none", stroke: "var(--amber)", "stroke-width": 2.2 }));
+    punti.forEach((q) => {
+      const x = X(q.pL);
+      svg.append(svgNode("line", { x1: x, y1: Y(q.lo), x2: x, y2: Y(q.hi),
+        stroke: "var(--amber)", "stroke-width": 1.2, opacity: .75 }));
+      const c = svgNode("circle", { cx: x.toFixed(1), cy: Y(q.P).toFixed(1), r: 3.3,
+        fill: q.pL === 0 ? "var(--violet)" : "var(--amber)" });
+      c.append(svgNode("title", {}, "p_L=" + q.pL + " → " + percentMetric(q.P, 2) +
+        "  IC95 [" + percentMetric(q.lo, 2) + ", " + percentMetric(q.hi, 2) + "]"));
+      svg.append(c);
+    });
+
+    let ly = m.top + 8;
+    [[t("thesis.shor.idealPoint", { v: percentMetric(shor.P_ideale, 1) }), "var(--violet)"],
+     [t("thesis.shor.floor", { v: percentMetric(shor.pavimento_uniforme, 1) }), "var(--red)"]]
+      .forEach((coppia) => {
+        svg.append(svgNode("circle", { cx: m.left + pw + 22, cy: ly, r: 3.4, fill: coppia[1] }));
+        svg.append(svgNode("text", { x: m.left + pw + 32, y: ly + 3.5, fill: "var(--muted)",
+          "font-size": 10, "font-family": "var(--mono)" }, coppia[0]));
+        ly += 20;
+      });
+
+    svg.append(svgNode("text", { x: m.left + pw / 2, y: H - 9, fill: "var(--dim)", "font-size": 10,
+      "font-family": "var(--mono)", "text-anchor": "middle" }, t("thesis.shor.axisX")));
+    svg.append(svgNode("text", { x: 14, y: m.top + ph / 2, fill: "var(--dim)", "font-size": 10,
+      "font-family": "var(--mono)", "text-anchor": "middle",
+      transform: "rotate(-90 14 " + (m.top + ph / 2) + ")" }, t("thesis.shor.axisY")));
+
+    $("shorSource").textContent = t("thesis.shor.source", {
+      punti: punti.length, repliche: shor.repliche, shot: fmtNum(shor.shot_per_replica, 0),
+    });
+  }
+
+  /* Dove ti collochi rispetto alla soglia misurata.
+
+     L'asse x del pannello QEC e' l'errore fisico per gate, ed e' la stessa
+     grandezza che muovi con la depolarizzazione 2Q: marcarci sopra il valore
+     scelto e' legittimo e risponde alla domanda che conta -- sono sopra o sotto
+     la soglia? Sopra, il surface code peggiora le cose invece di aiutare.
+
+     Il pannello 3 invece NON riceve alcun marcatore: il suo asse e' p_L, un
+     proxy fenomenologico logico, e non esiste conversione dai cursori a quella
+     grandezza. Disegnarcela sarebbe una equivalenza che i dati non sostengono. */
+  function marcaSogliaQec(svg, geom, qec) {
+    const n = collectNoise();
+    const eps2 = Number(n.eps_2q) || 0;
+    const verdetto = $("qecVerdict");
+    const soglia = Number(qec.surface.p_th);
+
+    if (!(eps2 > 0)) {
+      if (verdetto) {
+        verdetto.textContent = t("thesis.qec.off");
+        verdetto.className = "thesis-verdict is-off";
+      }
+      return;
+    }
+
+    const dentro = eps2 >= geom.xmin && eps2 <= geom.xmax;
+    if (dentro) {
+      const x = geom.X(eps2);
+      svg.append(svgNode("line", { x1: x, y1: geom.top, x2: x, y2: geom.top + geom.ph,
+        stroke: "var(--text)", "stroke-width": 2, opacity: .9 }));
+      svg.append(svgNode("circle", { cx: x, cy: geom.top + geom.ph, r: 4, fill: "var(--text)" }));
+      svg.append(svgNode("text", { x: x + 6, y: geom.top + geom.ph - 8, fill: "var(--text)",
+        "font-size": 10, "font-family": "var(--mono)" },
+        t("thesis.qec.yourChannel", { v: percentMetric(eps2, 2) })));
+    }
+
+    if (verdetto) {
+      const sopra = eps2 > soglia;
+      /* I numeri del confronto vengono dai punti MISURATI piu' vicini al valore
+         scelto, non dalla legge di scala: quel fit e' stato adattato solo sotto
+         soglia, ed estrapolarlo sopra darebbe cifre che nessuno ha misurato. */
+      const vicino = puntoSurfaceVicino(qec.surface, eps2);
+      // Oltre il doppio del punto piu' alto misurato non si cita piu' un punto
+      // "vicino": sarebbe spacciare per confronto un dato preso altrove.
+      if (vicino && eps2 > vicino.pMax * 2) {
+        verdetto.innerHTML = t("thesis.qec.beyond", {
+          v: percentMetric(eps2, 2), th: percentMetric(soglia, 2),
+          pmax: percentMetric(vicino.pMax, 2),
+        });
+        verdetto.className = "thesis-verdict";
+        return;
+      }
+      verdetto.innerHTML = vicino
+        ? t(sopra ? "thesis.qec.above" : "thesis.qec.below", {
+            v: percentMetric(eps2, 2), th: percentMetric(soglia, 2),
+            p: percentMetric(vicino.p, 2),
+            d1: vicino.dMin, d2: vicino.dMax,
+            pl1: formatProxy(vicino.pLMin), pl2: formatProxy(vicino.pLMax),
+          })
+        : t(sopra ? "thesis.qec.above" : "thesis.qec.below", {
+            v: percentMetric(eps2, 2), th: percentMetric(soglia, 2),
+            p: "—", d1: "—", d2: "—", pl1: "—", pl2: "—",
+          });
+      verdetto.className = `thesis-verdict${sopra ? "" : " is-below"}`;
+    }
+  }
+
+  /* Il punto misurato piu' vicino al rumore scelto, con l'errore logico alla
+     distanza minima e massima disponibili. Serve a dire "a questo livello di
+     rumore, spendere qubit rende cosi'" con numeri realmente misurati. */
+  function puntoSurfaceVicino(surface, p) {
+    const distanze = Object.keys(surface.distanze).sort((a, b) => Number(a) - Number(b));
+    if (!distanze.length) return null;
+    const griglia = surface.distanze[distanze[0]].map((q) => q.p);
+    if (!griglia.length) return null;
+    const pVicino = griglia.reduce((best, q) =>
+      Math.abs(Math.log(q) - Math.log(p)) < Math.abs(Math.log(best) - Math.log(p)) ? q : best);
+    const leggi = (d) => {
+      const punto = (surface.distanze[d] || []).find((q) => q.p === pVicino);
+      return punto ? punto.pL : null;
+    };
+    const dMin = distanze[0];
+    const dMax = distanze[distanze.length - 1];
+    const pLMin = leggi(dMin);
+    const pLMax = leggi(dMax);
+    if (pLMin == null || pLMax == null) return null;
+    return { p: pVicino, pMax: Math.max(...griglia), dMin, dMax, pLMin, pLMax };
+  }
+
+  /* La resa misurata collocata fra pavimento casuale e ideale teorico.
+
+     E' la stessa grandezza dell'asse verticale del pannello 3, quindi il
+     confronto e' diretto e non richiede alcuna conversione. Sta qui e non
+     sovrapposta a quel grafico proprio per non suggerire una posizione lungo
+     un asse x che per questo dato non e' definito. */
+  function renderGauge() {
+    const svg = $("gaugeChart");
+    if (!svg || !state.tesi) return;
+    const W = 920, H = 150;
+    const m = { left: 60, right: 60, top: 46 };
+    const pw = W - m.left - m.right;
+    const risposta = state.experiment.lastResponse;
+    const shor = state.tesi.shor_logico;
+
+    clearSvg(svg, t("thesis.gauge.title"), t("thesis.gauge.help"));
+    const X = (v) => m.left + Math.max(0, Math.min(1, v)) * pw;
+
+    svg.append(svgNode("rect", { x: m.left, y: m.top, width: pw, height: 16, rx: 8,
+      fill: "rgba(255,255,255,.06)" }));
+    for (let g = 0; g <= 10; g += 2) {
+      const x = X(g / 10);
+      svg.append(svgNode("text", { x, y: m.top + 44, fill: "var(--dim)", "font-size": 9.5,
+        "font-family": "var(--mono)", "text-anchor": "middle" }, percentMetric(g / 10, 0)));
+    }
+
+    if (!risposta) {
+      svg.append(svgNode("text", { x: W / 2, y: m.top - 18, fill: "var(--dim)", "font-size": 11,
+        "font-family": "var(--mono)", "text-anchor": "middle" }, t("thesis.gauge.empty")));
+      return;
+    }
+
+    const idealeMisurato = ratio(risposta.ideal && risposta.ideal.factor_yield);
+    const rumorosoMisurato = ratio(risposta.noisy && risposta.noisy.factor_yield);
+    const pavimento = Number(risposta.random_factor_floor) || shor.pavimento_uniforme;
+
+    // La banda utile: da dove si arriva tirando a caso, fino all'ideale teorico.
+    svg.append(svgNode("rect", { x: X(pavimento), y: m.top, width: X(shor.P_ideale) - X(pavimento),
+      height: 16, rx: 8, fill: "rgba(169,146,255,.16)" }));
+
+    const segna = (v, colore, testo, sopra) => {
+      if (!Number.isFinite(v)) return;
+      const x = X(v);
+      svg.append(svgNode("line", { x1: x, y1: m.top - 6, x2: x, y2: m.top + 22,
+        stroke: colore, "stroke-width": 2.4 }));
+      svg.append(svgNode("text", { x, y: sopra ? m.top - 12 : m.top + 36, fill: colore,
+        "font-size": 10, "font-family": "var(--mono)", "text-anchor": "middle" },
+        `${testo} ${percentMetric(v, 1)}`));
+    };
+
+    segna(pavimento, "var(--red)", t("thesis.gauge.floor"), false);
+    segna(shor.P_ideale, "var(--violet)", t("thesis.gauge.theoretical"), false);
+    segna(idealeMisurato, "var(--cyan)", t("thesis.gauge.measuredIdeal"), true);
+    segna(rumorosoMisurato, "var(--amber)", t("thesis.gauge.measuredNoisy"), true);
+  }
+
+  /* La legge di scala tradotta in prezzo: distanza necessaria e qubit fisici. */
+  function renderCosto(surface) {
+    const host = $("costPanel");
+    if (!host) return;
+    host.replaceChildren();
+    (surface.costo || []).forEach((riga) => {
+      const blocco = document.createElement("div");
+      blocco.className = "cost-block";
+      const titolo = document.createElement("h4");
+      titolo.textContent = t("thesis.cost.at", { p: percentMetric(riga.p, 2) });
+      const tab = document.createElement("table");
+      const intestazione = document.createElement("tr");
+      [t("thesis.cost.target"), t("thesis.cost.distance"), t("thesis.cost.qubits")].forEach((x) => {
+        const th = document.createElement("th");
+        th.textContent = x;
+        intestazione.append(th);
+      });
+      tab.append(intestazione);
+      riga.voci.forEach((v) => {
+        const tr = document.createElement("tr");
+        ["10⁻" + APICE(Math.round(-LOG10(v.bersaglio))), "d = " + v.d, fmtNum(v.qubit, 0)]
+          .forEach((x) => {
+            const td = document.createElement("td");
+            td.textContent = x;
+            tr.append(td);
+          });
+        tab.append(tr);
+      });
+      blocco.append(titolo, tab);
+      host.append(blocco);
+    });
+  }
+
   /* Il pulsante mostra la bandiera della lingua ATTIVA: premerlo passa all'altra. */
   function renderLangToggle() {
     const lang = window.I18N.lang();
@@ -1523,6 +1948,7 @@
     if (state.experiment.lastResponse) {
       renderExperiment(state.experiment.lastResponse, state.experiment.lastRenderSnapshot);
     }
+    renderCurveTesi();
     // applyStatic ha appena rimesso l'etichetta di riposo su entrambi i pulsanti.
     $("playStageBtn").textContent = t(state.ideal.playing ? "btn.pause" : "btn.playAuto");
     $("noisePlayBtn").textContent = t(state.bloch.playing ? "btn.pause" : "btn.playAuto");
@@ -1545,6 +1971,7 @@
     setupBlochView();
     setupStickyTabs();
     loadCircuitCost(state.instance.N);
+    loadCurveTesi();
     loadNoisyBloch();
     setupNoiseControls();
     setupInstanceControl();

@@ -237,6 +237,24 @@ def _bloch_precalcolato() -> dict:
         return {}
 
 
+@lru_cache(maxsize=1)
+def curve_tesi() -> dict:
+    """Curve QEC e sensibilita' di Shor estratte dagli artefatti validati.
+
+    Non sono ricalcolate dalla demo: sono campagne da ore, gia' prodotte e
+    verificate. Qui si serve il JSON generato da estrai_dati_tesi.py, che porta
+    con se' la propria provenienza. Se manca, l'endpoint lo dichiara invece di
+    inventare numeri.
+    """
+    percorso = os.path.join(_HERE, "precomputed", "tesi.json")
+    try:
+        with open(percorso, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError) as exc:
+        LOGGER.info("Curve della tesi non disponibili (%s).", type(exc).__name__)
+        return {}
+
+
 @lru_cache(maxsize=24)
 def _noisy_bloch_cached(N: int, noise_key: tuple) -> dict:
     config = dict(noise_key)

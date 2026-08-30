@@ -353,6 +353,59 @@ input[type="checkbox"] { width: 17px; height: 17px; margin: 0; accent-color: var
 .empty-results h3 { margin: 8px 0 5px; font: 600 1.2rem/1.2 var(--serif); }
 .empty-results p { margin: 0; color: var(--muted); font-size: .77rem; }
 .empty-results .button { margin-top: 16px; }
+/* Sezione "che cosa dimostra questo studio": curve validate della tesi. */
+.thesis-panel { display: grid; gap: 16px; padding: clamp(18px, 2vw, 28px); }
+.thesis-card {
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(10, 11, 19, .36);
+}
+.thesis-card h3 { margin: 0 0 6px; font: 600 1.02rem/1.25 var(--serif); }
+.thesis-card .details-help { margin: 0 0 14px; }
+.thesis-chart { width: 100%; min-width: 620px; height: auto; }
+.thesis-verdict {
+  margin: 12px 0 0;
+  padding: 10px 13px;
+  border-left: 3px solid var(--amber);
+  border-radius: 0 9px 9px 0;
+  background: rgba(245, 173, 78, .07);
+  color: var(--muted);
+  font-size: .74rem;
+  line-height: 1.55;
+}
+.thesis-verdict.is-below { border-left-color: var(--green); background: rgba(75, 213, 163, .07); }
+.thesis-verdict.is-off { border-left-color: var(--dim); background: rgba(255, 255, 255, .03); }
+.thesis-source {
+  margin: 10px 0 0;
+  color: var(--dim);
+  font: 500 .64rem/1.5 var(--mono);
+}
+.thesis-caveat {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(100, 213, 223, .3);
+  border-radius: 12px;
+  background: rgba(100, 213, 223, .06);
+  color: var(--muted);
+  font-size: .74rem;
+  line-height: 1.6;
+}
+/* Entropia: due barre confrontabili, stessa scala. */
+.entropy-row { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 12px; margin-bottom: 9px; }
+.entropy-row small { color: var(--dim); font: 750 .64rem/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+.entropy-track { height: 15px; border-radius: 8px; background: rgba(255,255,255,.06); overflow: hidden; }
+.entropy-fill { height: 100%; border-radius: 8px; }
+.entropy-fill.is-ideal { background: var(--violet); }
+.entropy-fill.is-noisy { background: var(--amber); }
+.entropy-row b { color: var(--text); font: 750 .72rem/1 var(--mono); }
+.cost-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.cost-block { padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: rgba(10,11,19,.4); }
+.cost-block h4 { margin: 0 0 9px; color: var(--cyan); font: 750 .66rem/1 var(--mono); letter-spacing: .07em; }
+.cost-block table { width: 100%; border-collapse: collapse; font: 500 .68rem/1.5 var(--mono); }
+.cost-block th { color: var(--dim); font-weight: 750; text-align: left; padding-bottom: 5px; }
+.cost-block td { color: var(--muted); padding: 2px 0; }
+.cost-block td:last-child, .cost-block th:last-child { text-align: right; color: var(--text); }
 .kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 16px; }
 .kpi { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: rgba(10,11,19,.36); }
 .kpi-ideal { border-top: 2px solid var(--violet); }.kpi-noisy { border-top: 2px solid var(--amber); }
