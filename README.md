@@ -86,6 +86,26 @@ uvicorn server:app --reload --port 8501
 Aprire <http://localhost:8501>. La documentazione OpenAPI è disponibile in locale su
 <http://localhost:8501/api/docs>.
 
+## Tour guidato e video dimostrativo
+
+Il pulsante **Tour guidato** nell'intestazione accompagna la demo un passo alla volta:
+evidenzia un pannello, spiega a cosa serve e aziona i comandi al posto dell'utente. Lo stesso
+copione (`frontend/tour.js`, testi in `frontend/i18n.js` sotto `tour.*`) produce anche il video
+muto di circa due minuti:
+
+| Indirizzo | Effetto |
+|---|---|
+| `/?tour=video&lang=it` | video in italiano, avanza da solo, senza pulsanti né cursore |
+| `/?tour=video&lang=en` | video in inglese |
+| `/?tour=guida` | tour con i pulsanti Avanti/Indietro |
+| `&ritmo=1.2` | allunga tutti i tempi del 20% (da 0.5 a 3) |
+
+Per registrare conviene la demo **in locale**, dove l'esperimento rumoroso dura pochi secondi;
+su Render la prima simulazione può superare i due minuti. La pagina prepara i calcoli, poi
+mostra «Pronto · premi Invio»: si avvia la registrazione dello schermo (Win+Alt+R oppure OBS),
+si mette il browser a schermo intero (F11) e si preme Invio. Esc interrompe. Il primo e
+l'ultimo secondo si tagliano in montaggio.
+
 ## Test
 
 Le dipendenze di test sono separate da quelle runtime, così il deploy Render non installa

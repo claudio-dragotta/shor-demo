@@ -729,3 +729,118 @@ footer p { margin: 0; }
 /* Terza tinta del popup: il riepilogo del rumore non e' un successo ne' un
    fallimento, e' una constatazione. */
 .result-popup.is-info .result-popup-card h2 { color: var(--amber); }
+
+/* ---------- Tour guidato e video dimostrativo (tour.js) ----------
+   Il velo e lo spotlight stanno sotto il popup della misura (z 60), il fumetto
+   sopra: il popup "15 = 3 × 5" resta visibile e il testo non viene coperto. */
+.header-actions { display: flex; flex: none; align-items: flex-start; gap: 10px; }
+.tour-toggle {
+  margin-top: 12px;
+  padding: 7px 14px;
+  border: 1px solid rgba(245, 173, 78, .45);
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  font: 750 .72rem/1 var(--mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  transition: border-color .18s ease, background .18s ease;
+}
+.tour-toggle:hover { border-color: var(--amber); background: rgba(245, 173, 78, .2); }
+
+.tour[hidden], .tour [hidden] { display: none !important; }
+.tour-velo { position: fixed; inset: 0; z-index: 50; background: rgba(5, 6, 12, .93); }
+.tour-luce {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  border: 2px solid var(--amber);
+  border-radius: 20px;
+  box-shadow: 0 0 0 200vmax rgba(5, 6, 12, .72), 0 0 32px rgba(245, 173, 78, .35);
+  transition: top .45s ease, left .45s ease, width .45s ease, height .45s ease;
+}
+.tour-cartello {
+  position: fixed;
+  z-index: 70;
+  top: 50%;
+  left: 50%;
+  width: min(860px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  text-align: center;
+  animation: tour-entra .6s ease both;
+}
+.tour-cartello h2 {
+  margin: 10px 0 18px;
+  font: 600 clamp(2rem, 4.6vw, 3.6rem)/1.02 var(--serif);
+  letter-spacing: -.03em;
+  text-wrap: balance;
+}
+.tour-cartello p:not(.kicker) { margin: 0 auto; max-width: 680px; color: var(--muted); font-size: clamp(1.05rem, 1.8vw, 1.35rem); line-height: 1.5; }
+.tour-barra {
+  position: fixed;
+  z-index: 70;
+  left: 50%;
+  bottom: 16px;
+  width: min(1040px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: rgba(16, 18, 30, .97);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+}
+.tour-avanzamento { height: 3px; background: rgba(245, 173, 78, .12); }
+.tour-avanzamento i { display: block; width: 0; height: 100%; background: var(--amber); }
+.tour:not(.is-video) .tour-avanzamento { display: none; }
+.tour-corpo { display: flex; align-items: flex-end; gap: 18px; padding: 16px 22px 18px; }
+.tour-testi { flex: 1; min-width: 0; }
+.tour-testi .kicker { margin-bottom: 6px; }
+.tour-testi h2 { margin: 0 0 6px; font: 600 1.45rem/1.15 var(--serif); }
+.tour-testi p:not(.kicker) { margin: 0; color: var(--text); font-size: 1.08rem; line-height: 1.45; }
+.tour-testi h2:empty, .tour-testi p:empty { display: none; }
+.tour-comandi { display: flex; flex: none; align-items: center; gap: 8px; }
+.tour.is-video .tour-comandi { display: none; }
+.tour-esci { padding: 8px 10px; border: 0; background: none; color: var(--dim); font: 700 .78rem/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+.tour-esci:hover { color: var(--text); }
+.tour-avvio {
+  position: fixed;
+  z-index: 70;
+  top: 50%;
+  left: 50%;
+  width: min(560px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  padding: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: var(--surface-solid);
+  text-align: center;
+  cursor: pointer;
+}
+.tour-avvio h2 { margin: 0 0 10px; font: 600 1.8rem/1.1 var(--serif); }
+.tour-avvio p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
+.tour-avvio-stato { margin: 0 !important; color: var(--dim) !important; font: 700 .8rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.tour-avvio-stato.is-pronto { color: var(--green) !important; }
+
+/* Con il tour aperto i grafici alti si stringono fino a stare, con il loro
+   titolo, nello spazio fra la barra delle schede e il fumetto. */
+body.tour-attivo .circuit-svg { max-height: calc(100vh - 380px); }
+body.tour-attivo .anatomy-svg { max-height: calc(100vh - 260px); }
+body.tour-attivo .distribution-chart { max-height: calc(100vh - 340px); }
+body.tour-attivo .thesis-chart { max-height: calc(100vh - 400px); }
+
+/* Durante il video niente cursore e niente barra di scorrimento: si registra lo schermo. */
+body.tour-video, body.tour-video * { cursor: none !important; }
+html:has(body.tour-video) { scrollbar-width: none; }
+html:has(body.tour-video)::-webkit-scrollbar { display: none; }
+@keyframes tour-entra { from { opacity: 0; transform: translate(-50%, -46%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .tour-luce { transition: none; }
+  .tour-cartello { animation: none; }
+}
+@media (max-width: 640px) {
+  .header-actions { flex-direction: column; align-items: flex-end; gap: 0; }
+  .tour-corpo { flex-direction: column; align-items: stretch; padding: 14px 16px; }
+  .tour-comandi { justify-content: flex-end; }
+  .tour-testi h2 { font-size: 1.2rem; }
+  .tour-testi p:not(.kicker) { font-size: .98rem; }
+}

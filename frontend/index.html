@@ -15,6 +15,8 @@
     <header class="site-header">
       <h1 data-i18n-html="header.title">Dal circuito ideale al <em>rumore quantistico</em></h1>
       <!-- La bandiera mostrata e' quella della lingua ATTIVA; premerla passa all'altra. -->
+      <div class="header-actions">
+      <button class="tour-toggle" id="tourBtn" type="button" data-i18n="tour.btn">Tour guidato</button>
       <button class="lang-toggle" id="langToggle" type="button"
               data-i18n-attr="aria-label:lang.switchTo, title:lang.switchTo">
         <svg class="flag" id="flagIt" viewBox="0 0 3 2" aria-hidden="true" focusable="false">
@@ -32,6 +34,7 @@
         </svg>
         <span class="lang-code" id="langCode">IT</span>
       </button>
+      </div>
     </header>
 
     <div class="tabs-sentinel" aria-hidden="true"></div>
@@ -432,5 +435,6 @@
 
   <script src="i18n.js"></script>
   <script src="app.js"></script>
+  <script src="tour.js"></script>
 </body>
 </html>

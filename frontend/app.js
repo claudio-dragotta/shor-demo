@@ -2053,6 +2053,37 @@
     renderLangToggle();
   }
 
+  /* Aggancio per il tour guidato (tour.js). Il tour non tocca lo stato da fuori:
+     chiama le stesse funzioni dei pulsanti, cosi' quello che si vede nel video e'
+     esattamente quello che fa la demo. */
+  window.ShorDemo = Object.freeze({
+    pronta: () => Boolean(state.ideal.info) && Boolean(state.bloch.noisy) && !state.bloch.loading
+      && Boolean(state.bloch.ideal),
+    istanza15: () => {
+      if (state.instance.N === 15) return;
+      $("instanceSelect").value = "15";
+      $("customNField").hidden = true;
+      selectInstance(15);
+    },
+    stadioIdeale: async (indice) => {
+      stopPlayback();
+      await loadStage(indice);
+      return state.ideal.bloch?.measured_shot || null;
+    },
+    scheda: (nome) => activateTab(nome),
+    vistaRumore: (modo) => setBlochMode(modo),
+    stadioRumore: (indice) => { stopNoisePlayback(); setBlochStage(indice); },
+    dettaglioRumore: (aperto) => mostraDettaglioRumore(aperto),
+    esperimento: () => runExperiment(),
+    haRisultato: () => state.experiment.hasResult && !state.experiment.running,
+    chiudiPopup: () => hideResultPopup(),
+    riepilogoRumore: () => showNoiseSummary(),
+    // Fa scorrere gli stadi sotto rumore dall'inizio; a fine corsa la demo apre
+    // da sola il riepilogo della decoerenza.
+    corsaRumore: () => { stopNoisePlayback(); setBlochStage(0); toggleNoisePlayback(); },
+    rumoreInCorsa: () => state.bloch.playing,
+  });
+
   function init() {
     window.I18N.applyStatic();
     setupLangToggle();
