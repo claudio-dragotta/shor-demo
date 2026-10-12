@@ -18,8 +18,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+import aqft_backend as aqft
 import api_backend as api
 from experiment_backend import (
+    ClassicallySolved,
     MAX_SHOTS,
     SimulationUnavailable,
     validate_live_experiment,
@@ -147,9 +149,15 @@ def api_ideal_sample(
 
 @app.get("/api/circuit-cost")
 def api_circuit_cost(N: int = Query(..., ge=2, le=1000)):
-    """Su quante porte agisce ogni canale: alimenta l'anatomia del rumore."""
+    """Su quante porte agisce ogni canale: alimenta l'anatomia del rumore.
+
+    Un N che il pre-processing classico risolve (pari, primo, potenza...) non ha un
+    circuito: non e' un errore della richiesta, quindi 200 con ``classical: true``.
+    """
     try:
         return api.circuit_cost(N)
+    except ClassicallySolved as solved:
+        return {"N": N, "classical": True, "reason": solved.outcome.get("reason")}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -212,6 +220,88 @@ def api_curve_tesi():
     sezione invece di mostrare grafici senza dati.
     """
     return api.curve_tesi()
+
+
+# ---------------------------------------------------------------------------
+# QFT approssimata (scheda 03)
+# ---------------------------------------------------------------------------
+class AqftRequest(BaseModel):
+    """QFT piena contro AQFT di grado k sullo stesso rumore illustrativo, N=15."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    k: int = Field(1, ge=1, le=aqft.K_FULL, strict=True)
+    shots: int = Field(512, ge=aqft.AQFT_MIN_SHOTS, le=aqft.AQFT_MAX_SHOTS, strict=True)
+    seed: int | None = Field(None, ge=0, le=2 ** 31 - 1, strict=True)
+    noise: NoiseConfig = Field(default_factory=NoiseConfig)
+
+
+@app.get("/api/aqft/structure")
+def api_aqft_structure():
+    """Rotazioni, costo compilato e distribuzione ideale esatta per ogni grado k.
+
+    Deterministico e memoizzato: sette compilazioni e sette statevector da 12 qubit,
+    pagati una volta per processo.
+    """
+    try:
+        return aqft.aqft_structure()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Struttura AQFT temporaneamente non disponibile.")
+
+
+@app.post("/api/aqft/experiment")
+def api_aqft_experiment(request: AqftRequest):
+    try:
+        return _with_simulation_slot(
+            lambda: aqft.run_aqft_experiment(
+                k=request.k, shots=request.shots, seed=request.seed,
+                noise=request.noise.model_dump(),
+            )
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except SimulationUnavailable:
+        raise HTTPException(status_code=503, detail="Simulazione temporaneamente non disponibile.")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Errore interno durante la simulazione.")
+
+
+class AqftBlochRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    k: int = Field(1, ge=1, le=aqft.K_FULL, strict=True)
+    noise: NoiseConfig = Field(default_factory=NoiseConfig)
+
+
+@app.post("/api/aqft/bloch")
+def api_aqft_bloch(request: AqftBlochRequest):
+    """Sfere di Bloch stadio per stadio del circuito AQFT di grado k, con il rumore dato."""
+    try:
+        return _with_simulation_slot(
+            lambda: aqft.aqft_bloch(request.k, request.noise.model_dump())
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except SimulationUnavailable:
+        raise HTTPException(status_code=503, detail="Vista di Bloch temporaneamente non disponibile.")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Errore interno durante il calcolo dello stato.")
+
+
+@app.get("/api/aqft/curva")
+def api_aqft_curva():
+    """Resa contro grado sotto i preset illustrativi, precalcolata. Vuota se manca il file."""
+    return aqft.aqft_curva()
+
+
+@app.get("/api/aqft/tesi")
+def api_aqft_tesi():
+    """Risultati M15 letti dagli artefatti della tesi. Vuoti se manca il file."""
+    return aqft.aqft_tesi()
 
 
 @app.get("/health")

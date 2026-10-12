@@ -9,6 +9,14 @@
 
   const DICT = {
     it: {
+      "qft.kicker": "Dentro la QFT inversa",
+      "qft.title": "La trasformata che legge il periodo",
+      "qft.intro": "Il blocco QFT⁻¹ del circuito, aperto: prima gli SWAP che invertono l’ordine dei bit, poi per ogni qubit le rotazioni controllate dai qubit già elaborati, di angolo π/2, π/4, π/8…, e infine una Hadamard. È la trasformata piena, con tutte le rotazioni: la scheda <strong>03 · QFT approssimata</strong> mostra che cosa resta togliendo le più piccole.",
+      "qft.chip": "{n} qubit · {rot} rotazioni",
+      "qft.svgTitle": "QFT inversa piena a {n} qubit",
+      "qft.svgDesc": "{swap} SWAP, poi per ogni qubit j le rotazioni controllate di angolo π/2^(j−m) dai qubit m < j e una Hadamard: {rot} rotazioni in tutto.",
+      "qft.scroller": "QFT inversa, scorrevole orizzontalmente",
+      "qft.legend.rotation": "rotazione controllata",
       "doc.title": "Shor Lab — simulatore ideale e rumore",
       "doc.description": "Demo didattica dell'algoritmo di Shor: simulazione ideale e laboratorio del rumore quantistico.",
       "skip": "Vai al contenuto",
@@ -22,10 +30,12 @@
       "tab.noise.desc": "Errori separati, confronto quantitativo",
 
       "ideal.kicker": "Configurazione validata",
+      "ideal.kicker.free": "Numero scelto",
       "ideal.title": "Esplora il circuito, uno stadio alla volta",
       "badges.aria": "Parametri dell'istanza",
       "badge.scope": "Perimetro",
       "badge.unvalidated": "non validata",
+      "badge.free": "numero libero",
       "badge.base": "Base",
       "badge.count": "Conteggio",
       "badge.qubits": "t = {n} qubit",
@@ -475,6 +485,14 @@
     },
 
     en: {
+      "qft.kicker": "Inside the inverse QFT",
+      "qft.title": "The transform that reads the period",
+      "qft.intro": "The circuit’s QFT⁻¹ block, opened up: first the SWAPs that reverse the bit order, then for each qubit the rotations controlled by the qubits already processed, with angles π/2, π/4, π/8…, and finally a Hadamard. This is the full transform with every rotation: tab <strong>03 · Approximate QFT</strong> shows what remains once the smallest ones are dropped.",
+      "qft.chip": "{n} qubits · {rot} rotations",
+      "qft.svgTitle": "Full {n}-qubit inverse QFT",
+      "qft.svgDesc": "{swap} SWAPs, then for each qubit j the controlled rotations of angle π/2^(j−m) from the qubits m < j and a Hadamard: {rot} rotations in all.",
+      "qft.scroller": "Inverse QFT, scrolls horizontally",
+      "qft.legend.rotation": "controlled rotation",
       "doc.title": "Shor Lab — ideal simulator and noise",
       "doc.description": "Teaching demo of Shor's algorithm: ideal simulation and a quantum noise laboratory.",
       "skip": "Skip to content",
@@ -488,10 +506,12 @@
       "tab.noise.desc": "Separated errors, quantitative comparison",
 
       "ideal.kicker": "Validated configuration",
+      "ideal.kicker.free": "Chosen number",
       "ideal.title": "Explore the circuit, one stage at a time",
       "badges.aria": "Instance parameters",
       "badge.scope": "Scope",
       "badge.unvalidated": "not validated",
+      "badge.free": "free number",
       "badge.base": "Base",
       "badge.count": "Counting",
       "badge.qubits": "t = {n} qubits",
@@ -946,7 +966,7 @@
 
   /* L'italiano e' la lingua della demo, non un ripiego: la prima visita parte
      sempre da li' e la bandiera resta l'unico modo per cambiarla. Sniffare il
-     browser porterebbe un relatore con Chrome in inglese su una pagina inglese
+     browser porterebbe un visitatore con Chrome in inglese su una pagina inglese
      senza averlo chiesto. Si ricorda solo una scelta esplicita. */
   function readStored() {
     try {
@@ -1022,5 +1042,11 @@
     applyStatic,
     formatNumber,
     locale,
+    /* Una sezione puo' portare con se' le proprie chiavi (aqft.js lo fa). Devono
+       arrivare in entrambe le lingue, come il resto del dizionario. */
+    extend: (lang, entries) => {
+      if (!LANGS.includes(lang) || !entries) return;
+      Object.assign(DICT[lang], entries);
+    },
   };
 })();

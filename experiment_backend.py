@@ -50,6 +50,10 @@ INSTANCE_CONFIGS = {
 }
 BASIS_GATES = ["rz", "sx", "x", "cx"]
 SEED_TRANSPILER = 20260819
+# Il campione rumoroso usa seed + NOISY_SEED_OFFSET: indipendente da quello ideale (Aer usa
+# seed + i per lo shot i, e l'offset supera gli shot massimi). La scheda AQFT riusa la stessa
+# regola per la QFT piena, cosi' con lo stesso seed i due campioni coincidono.
+NOISY_SEED_OFFSET = 1_000_003
 GATE_TIME_1Q_NS = 50.0
 GATE_TIME_2Q_NS = 300.0
 LOGGER = logging.getLogger(__name__)
@@ -277,7 +281,7 @@ def _simulate(payload: dict[str, Any]) -> dict[str, Any]:
     # Baseline e campione rumoroso devono essere riproducibili ma statisticamente
     # indipendenti: usare lo stesso seed in due simulatori con flussi RNG diversi
     # crea una correlazione opaca e rende scorretto l'IC Newcombe indipendente.
-    noisy_seed = (seed + 1_000_003) % (2 ** 31)
+    noisy_seed = (seed + NOISY_SEED_OFFSET) % (2 ** 31)
 
     base = sg.build_circuit(N, a, n_count)
     # Decomposizione esplicita: nessuna CCX/CP opaca puo' sfuggire a eps_2q.
@@ -409,8 +413,17 @@ def _bloch_stages(payload: dict[str, Any]) -> dict[str, Any]:
     noise = dict(payload["noise"])
     instance = instance_config(N)
     n_count = instance["n_count"]
-    base = api._instance_circuit(N)
-    stages = api._instance_stages(N)
+    k = payload.get("k")
+    if k is not None:
+        # Scheda 03: lo stesso calcolo sul circuito con QFT inversa troncata al grado k.
+        import aqft_backend
+        if N != aqft_backend.N_AQFT:
+            raise ValueError("La QFT approssimata e' disponibile solo per N=15.")
+        base = aqft_backend.build_aqft_circuit(int(k))
+        stages = api._stages(base, n_count)
+    else:
+        base = api._instance_circuit(N)
+        stages = api._instance_stages(N)
 
     model = build_illustrative_noise_model(noise) if noise_is_active(noise) else None
     simulator = AerSimulator(method="density_matrix", noise_model=model)
@@ -449,10 +462,11 @@ def _bloch_stages(payload: dict[str, Any]) -> dict[str, Any]:
             })
         out.append({"stage": index, "label": stages[index]["label"],
                     "kind": stages[index]["kind"], "qubits": qubits})
-    return {"ok": True, "N": N, "n_count": n_count, "noisy": bool(model), "stages": out}
+    return {"ok": True, "N": N, "n_count": n_count, "noisy": bool(model), "stages": out,
+            "k": None if k is None else int(k)}
 
 
-def run_bloch_isolated(*, N: int, noise: dict[str, Any],
+def run_bloch_isolated(*, N: int, noise: dict[str, Any], k: int | None = None,
                        timeout_seconds: float = 180.0) -> dict[str, Any]:
     """Come run_pair_isolated: Aer resta fuori dal worker ASGI."""
     instance_config(N)   # solo le istanze validate
@@ -460,7 +474,7 @@ def run_bloch_isolated(*, N: int, noise: dict[str, Any],
     try:
         process = subprocess.run(
             [sys.executable, os.path.abspath(__file__), "--bloch"],
-            input=json.dumps({"N": N, "noise": noise}),
+            input=json.dumps({"N": N, "noise": noise, "k": k}),
             capture_output=True, text=True, timeout=timeout_seconds, check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Demo didattica dell'algoritmo di Shor: simulazione ideale e laboratorio del rumore quantistico.">
+  <meta name="description" content="Demo didattica dell'algoritmo di Shor: simulazione ideale, laboratorio del rumore quantistico e QFT approssimata.">
   <title>Shor Lab — simulatore ideale e rumore</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>⚛</text></svg>">
   <link rel="stylesheet" href="style.css">
@@ -47,6 +47,10 @@
         <span class="tab-index">02</span>
         <span><strong data-i18n="tab.noise.name">Laboratorio del rumore</strong><small data-i18n="tab.noise.desc">Errori separati, confronto quantitativo</small></span>
       </button>
+      <button class="tab" id="aqftTab" type="button" role="tab" aria-selected="false" aria-controls="aqftPanel" tabindex="-1" data-tab="aqft">
+        <span class="tab-index">03</span>
+        <span><strong data-i18n="tab.aqft.name">QFT approssimata</strong><small data-i18n="tab.aqft.desc">Meno rotazioni, meno porte, meno rumore</small></span>
+      </button>
     </nav>
 
     <main id="mainContent">
@@ -65,6 +69,7 @@
           </div>
 
           <div class="transport" data-i18n-attr="aria-label:transport.aria">
+            <div class="instance-picker" id="instancePicker">
             <label class="instance-control" for="instanceSelect">
               <span data-i18n="ideal.instanceLabel">Numero da fattorizzare</span>
               <select id="instanceSelect"><option value="15" selected>15</option><option value="21">21</option><option value="35">35</option><option value="altro" data-i18n="ideal.other">Altro…</option></select>
@@ -73,6 +78,7 @@
               <span data-i18n="ideal.whichLabel">Quale</span>
               <input type="number" id="customNInput" min="4" max="47" step="1" placeholder="4–47" inputmode="numeric">
             </label>
+            </div>
             <button class="button button-primary" id="playStageBtn" type="button" data-i18n="btn.playAuto">Avvia automatico</button>
             <button class="button button-secondary" id="stepModeBtn" type="button" data-i18n="btn.stepMode">Avvia a blocchi</button>
             <div class="stage-nav" role="group" data-i18n-attr="aria-label:stagenav.aria">
@@ -113,6 +119,24 @@
           </section>
 
         </div>
+
+        <section class="panel circuit-panel qft-panel" aria-labelledby="qftTitle">
+          <div class="section-heading circuit-heading">
+            <div><p class="kicker" data-i18n="qft.kicker">Dentro la QFT inversa</p><h2 id="qftTitle" data-i18n="qft.title">La trasformata che legge il periodo</h2></div>
+            <span class="stage-chip" id="qftChip">—</span>
+          </div>
+          <p class="panel-intro" data-i18n-html="qft.intro"></p>
+          <div class="circuit-scroller" tabindex="0" data-i18n-attr="aria-label:qft.scroller">
+            <svg id="qftSvg" class="circuit-svg aq-circuit-svg" viewBox="0 0 1180 400" role="img" aria-labelledby="qftSvgTitle qftSvgDesc">
+              <title id="qftSvgTitle"></title><desc id="qftSvgDesc"></desc>
+            </svg>
+          </div>
+          <div class="legend">
+            <span><i class="legend-dot dot-cyan"></i><span data-i18n="qft.legend.rotation">rotazione controllata</span></span>
+            <span><i class="legend-dot dot-violet"></i><span data-i18n="aq.legend.h">Hadamard</span></span>
+            <span><i class="legend-dot dot-pink"></i><span data-i18n="aq.legend.swap">SWAP di inversione</span></span>
+          </div>
+        </section>
 
         <section class="panel math-panel" aria-labelledby="mathTitle">
           <div class="section-heading">
@@ -418,6 +442,225 @@
           <p class="thesis-caveat" data-i18n-html="thesis.caveat"></p>
         </section>
       </section>
+
+      <section class="tab-panel" id="aqftPanel" role="tabpanel" aria-labelledby="aqftTab" hidden>
+        <section class="panel control-panel aq-hero" aria-labelledby="aqTitle">
+          <div class="section-heading">
+            <div>
+              <p class="kicker" data-i18n="aq.kicker">QFT approssimata · N = 15</p>
+              <h2 id="aqTitle" data-i18n="aq.title">Togliere rotazioni per togliere rumore</h2>
+              <p class="panel-intro" data-i18n-html="aq.intro"></p>
+            </div>
+            <div class="instance-badges" data-i18n-attr="aria-label:badges.aria">
+              <span><small data-i18n="aq.badge.instance">Istanza</small><b>N=15 · a=7</b></span>
+              <span><small data-i18n="aq.badge.register">Registro</small><b>n = 8</b></span>
+              <span><small data-i18n="aq.badge.rotations">Rotazioni</small><b id="aqBadgeRot">—</b></span>
+            </div>
+          </div>
+
+          <div class="aq-degree">
+            <div class="aq-degree-head">
+              <label for="aqK"><span data-i18n="aq.k.label">Grado di troncamento</span> <b class="mono" id="aqKValue">k = 1</b></label>
+              <p id="aqKHelp" class="details-help"></p>
+            </div>
+            <input id="aqK" class="aq-range" type="range" min="1" max="7" step="1" value="1" list="aqKTicks" data-i18n-attr="aria-label:aq.k.aria">
+            <datalist id="aqKTicks"><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option><option value="5"></option><option value="6"></option><option value="7"></option></datalist>
+            <div class="aq-ticks" aria-hidden="true" id="aqTicks"></div>
+          </div>
+          <p class="status-line" id="aqStatus" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="panel circuit-panel" aria-labelledby="aqCircuitTitle">
+          <div class="section-heading circuit-heading">
+            <div>
+              <p class="kicker" data-i18n="aq.circuit.kicker">Il circuito</p>
+              <h2 id="aqCircuitTitle" data-i18n="aq.circuit.title">QFT approssimata sul registro di conteggio</h2>
+            </div>
+            <span class="stage-chip" id="aqCircuitChip">—</span>
+          </div>
+          <p class="panel-intro" data-i18n-html="aq.circuit.intro"></p>
+          <div class="circuit-scroller" tabindex="0" data-i18n-attr="aria-label:aq.circuit.scroller">
+            <svg id="aqCircuitSvg" class="circuit-svg aq-circuit-svg" viewBox="0 0 1180 400" role="img" aria-labelledby="aqCircuitSvgTitle aqCircuitSvgDesc">
+              <title id="aqCircuitSvgTitle"></title><desc id="aqCircuitSvgDesc"></desc>
+            </svg>
+          </div>
+          <div class="legend">
+            <span><i class="legend-dot dot-cyan"></i><span data-i18n="aq.legend.kept">rotazione tenuta</span></span>
+            <span><i class="legend-dot dot-violet"></i><span data-i18n="aq.legend.h">Hadamard</span></span>
+            <span><i class="legend-dot dot-pink"></i><span data-i18n="aq.legend.swap">SWAP di inversione</span></span>
+          </div>
+          <div class="aq-distance-wrap">
+            <div class="aq-distance" id="aqDistance"></div>
+          </div>
+        </section>
+
+        <div class="aq-two">
+          <section class="panel control-panel" aria-labelledby="aqCostTitle">
+            <div class="section-heading compact-heading">
+              <div>
+                <p class="kicker" data-i18n="aq.cost.kicker">Dopo la compilazione</p>
+                <h2 id="aqCostTitle" data-i18n="aq.cost.title">Quanto costa il circuito intero</h2>
+              </div>
+            </div>
+            <p class="panel-intro" data-i18n="aq.cost.intro"></p>
+            <div class="aq-cost" id="aqCost"></div>
+            <p class="thesis-source" id="aqCostSource"></p>
+          </section>
+
+          <section class="panel control-panel" aria-labelledby="aqIdealTitle">
+            <div class="section-heading compact-heading">
+              <div>
+                <p class="kicker" data-i18n="aq.ideal.kicker">Senza rumore</p>
+                <h2 id="aqIdealTitle" data-i18n="aq.ideal.title">Che cosa si perde troncando</h2>
+              </div>
+            </div>
+            <div class="aq-ideal-kpis" id="aqIdealKpis"></div>
+            <div class="aq-phase" id="aqPhase"></div>
+            <p class="thesis-verdict is-below" id="aqIdealVerdict"></p>
+          </section>
+        </div>
+
+        <section class="panel control-panel aq-stadi" id="aqStadiPanel" aria-labelledby="aqStadiTitle">
+          <div class="section-heading">
+            <div>
+              <p class="kicker" data-i18n="aq.stadi.kicker">Stadio per stadio · stato ridotto esatto</p>
+              <h2 id="aqStadiTitle" data-i18n="aq.stadi.title">QFT piena e QFT approssimata, fianco a fianco</h2>
+              <p class="panel-intro" data-i18n-html="aq.stadi.intro"></p>
+            </div>
+            <span class="stage-chip" id="aqStadiChip">—</span>
+          </div>
+          <div class="noise-topbar-row aq-stadi-controls">
+            <div class="view-toggle" role="group" data-i18n-attr="aria-label:aq.stadi.modeAria">
+              <button class="view-option is-active" id="aqStadiIdeale" type="button" aria-pressed="true" data-i18n="aq.stadi.ideal">Senza rumore</button>
+              <button class="view-option" id="aqStadiRumore" type="button" aria-pressed="false" data-i18n="aq.stadi.noisy">Con rumore</button>
+            </div>
+            <button class="button button-primary" id="aqStadiPlay" type="button" data-i18n="btn.playAuto">Avvia automatico</button>
+            <button class="button button-accent" id="aqStadiCalcola" type="button" data-i18n="aq.stadi.compute" hidden>Calcola</button>
+            <div class="stage-nav" role="group" data-i18n-attr="aria-label:stagenav.aria">
+              <button class="icon-button" id="aqStadiPrev" type="button" data-i18n-attr="aria-label:btn.prevStage, title:btn.prevStage">&#9664;</button>
+              <span class="stage-counter" id="aqStadiCounter" aria-live="polite">— / —</span>
+              <button class="icon-button" id="aqStadiNext" type="button" data-i18n-attr="aria-label:btn.nextStage, title:btn.nextStage">&#9654;</button>
+            </div>
+          </div>
+          <p class="status-line" id="aqStadiStatus" role="status" aria-live="polite"></p>
+          <div class="noise-stage-view is-compare aq-stadi-view">
+            <section class="panel circuit-panel" aria-labelledby="aqStadiFullTitle">
+              <div class="section-heading circuit-heading"><div><p class="kicker" id="aqStadiFullKicker">—</p><h2 id="aqStadiFullTitle" data-i18n="aq.stadi.fullTitle">QFT piena</h2></div></div>
+              <div class="circuit-scroller" tabindex="0"><svg id="aqStadiFullSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img"></svg></div>
+            </section>
+            <section class="panel circuit-panel" aria-labelledby="aqStadiAqftTitle">
+              <div class="section-heading circuit-heading"><div><p class="kicker" id="aqStadiAqftKicker">—</p><h2 id="aqStadiAqftTitle">AQFT</h2></div></div>
+              <div class="circuit-scroller" tabindex="0"><svg id="aqStadiAqftSvg" class="circuit-svg" viewBox="0 0 1080 620" role="img"></svg></div>
+            </section>
+          </div>
+          <p class="thesis-verdict" id="aqStadiVerdict"></p>
+        </section>
+
+        <section class="panel results-panel" aria-labelledby="aqRunTitle">
+          <div class="section-heading">
+            <div>
+              <p class="kicker" data-i18n="aq.run.kicker">Con rumore · simulazione live</p>
+              <h2 id="aqRunTitle" data-i18n="aq.run.title">QFT piena contro QFT approssimata</h2>
+              <p class="panel-intro" data-i18n-html="aq.run.intro"></p>
+            </div>
+            <div class="random-baseline"><small data-i18n="results.randomBaseline">Baseline casuale</small><strong id="aqFloor">—</strong></div>
+          </div>
+          <div class="run-config aq-run-config">
+            <div class="preset-group" role="group" data-i18n-attr="aria-label:preset.group.aria" id="aqPresets">
+              <button class="preset" type="button" data-aq-preset="readout" aria-pressed="false" data-i18n="preset.readout">Solo readout</button>
+              <button class="preset is-active" type="button" data-aq-preset="uc1" aria-pressed="true" data-i18n="preset.uc1">UC1 moderato</button>
+              <button class="preset" type="button" data-aq-preset="uc2" aria-pressed="false" data-i18n="preset.uc2">UC2 stress</button>
+            </div>
+            <label><span data-i18n="run.shots">Shot</span><select id="aqShots"><option value="256">256</option><option value="512">512</option><option value="1024" selected>1024</option><option value="2048">2048</option></select></label>
+            <label><span data-i18n="run.seed">Seed</span><input id="aqSeed" type="number" min="0" max="2147483647" step="1" value="42" inputmode="numeric"></label>
+            <button class="button button-accent" id="aqRunBtn" type="button" data-i18n="aq.run.btn">Confronta le due trasformate</button>
+          </div>
+          <p class="snapshot" id="aqNoiseSnapshot"></p>
+          <p class="status-line" id="aqRunStatus" role="status" aria-live="polite"></p>
+
+          <div id="aqEmpty" class="empty-results"><span aria-hidden="true">⌁</span><h3 data-i18n="aq.run.empty.title">Nessun confronto ancora eseguito</h3><p data-i18n="aq.run.empty.text">Scegli un grado e un preset, poi avvia: i due circuiti girano con lo stesso rumore e gli stessi shot.</p></div>
+          <div id="aqResults" hidden>
+            <div class="kpi-grid aq-kpis" id="aqKpis"></div>
+            <div class="chart-block">
+              <div class="chart-header">
+                <div><h3 data-i18n="aq.chart.title">Distribuzione degli esiti sotto rumore</h3><p data-i18n="aq.chart.help">Ogni barra è un valore misurato del registro (0–255). Le linee tratteggiate sono i picchi teorici 0, 64, 128, 192.</p></div>
+                <div class="chart-legend"><span><i class="swatch ideal-swatch"></i><span data-i18n="aq.series.full">QFT piena</span></span><span><i class="swatch aq-swatch"></i><span id="aqSeriesAqft">AQFT</span></span><span><i class="peak-marker"></i><span data-i18n="chart.legend.peak">Picco teorico</span></span></div>
+              </div>
+              <div class="chart-scroller" tabindex="0">
+                <svg id="aqDistChart" class="distribution-chart" viewBox="0 0 1120 330" role="img" aria-labelledby="aqDistTitle aqDistDesc"><title id="aqDistTitle"></title><desc id="aqDistDesc"></desc></svg>
+              </div>
+              <p class="chart-summary" id="aqDistSummary"></p>
+            </div>
+            <section class="provenance" aria-labelledby="aqProvTitle">
+              <div class="provenance-head"><h3 id="aqProvTitle" data-i18n="aq.prov.title">Provenienza del confronto</h3></div>
+              <dl id="aqProvList" class="provenance-list"></dl>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel results-panel" id="aqCurvePanel" aria-labelledby="aqCurveTitle" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="kicker" data-i18n="aq.curve.kicker">Tutti i gradi · dati precalcolati</p>
+              <h2 id="aqCurveTitle" data-i18n="aq.curve.title">Dove sta il grado migliore</h2>
+              <p class="panel-intro" data-i18n-html="aq.curve.intro"></p>
+            </div>
+          </div>
+          <div class="chart-block">
+            <div class="chart-header">
+              <div><h3 data-i18n="aq.curve.chart">Resa in fattori contro grado k</h3><p id="aqCurveHelp"></p></div>
+              <div class="chart-legend" id="aqCurveLegend"></div>
+            </div>
+            <div class="chart-scroller" tabindex="0">
+              <svg id="aqCurveChart" class="thesis-chart" viewBox="0 0 920 380" role="img" aria-labelledby="aqCurveSvgTitle aqCurveSvgDesc"><title id="aqCurveSvgTitle"></title><desc id="aqCurveSvgDesc"></desc></svg>
+            </div>
+            <p class="thesis-verdict" id="aqCurveVerdict"></p>
+            <p class="thesis-source" id="aqCurveSource"></p>
+          </div>
+        </section>
+
+        <section class="panel thesis-panel" id="aqThesisPanel" aria-labelledby="aqThesisTitle" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="kicker" data-i18n="aq.thesis.kicker">Dalla tesi · campagna M15</p>
+              <h2 id="aqThesisTitle" data-i18n="aq.thesis.title">Che cosa ha misurato la tesi</h2>
+            </div>
+          </div>
+          <p class="panel-intro" data-i18n-html="aq.thesis.intro"></p>
+
+          <article class="thesis-card">
+            <h3 data-i18n="aq.thesis.n15.title">Shor N = 15 su snapshot FakeSherbrooke</h3>
+            <p class="details-help" data-i18n="aq.thesis.n15.help"></p>
+            <div class="chart-scroller" tabindex="0">
+              <svg id="aqN15Chart" class="thesis-chart" viewBox="0 0 920 330" role="img" aria-labelledby="aqN15Title aqN15Desc"><title id="aqN15Title"></title><desc id="aqN15Desc"></desc></svg>
+            </div>
+            <div class="aq-table-wrap"><table class="aq-table" id="aqN15Table"></table></div>
+            <p class="thesis-verdict" id="aqN15Verdict"></p>
+            <p class="thesis-source" id="aqN15Source"></p>
+          </article>
+
+          <div class="aq-two">
+            <article class="thesis-card">
+              <h3 data-i18n="aq.thesis.n21.title">Shor N = 21: il test discriminante</h3>
+              <p class="details-help" data-i18n="aq.thesis.n21.help"></p>
+              <div class="aq-table-wrap"><table class="aq-table" id="aqN21Table"></table></div>
+              <p class="thesis-verdict is-off" id="aqN21Verdict"></p>
+              <p class="thesis-source" id="aqN21Source"></p>
+            </article>
+            <article class="thesis-card">
+              <h3 data-i18n="aq.thesis.qpe.title">Stima di fase isolata (M15b)</h3>
+              <p class="details-help" data-i18n="aq.thesis.qpe.help"></p>
+              <div class="chart-scroller" tabindex="0">
+                <svg id="aqQpeChart" class="thesis-chart aq-forest" viewBox="0 0 520 330" role="img" aria-labelledby="aqQpeTitle aqQpeDesc"><title id="aqQpeTitle"></title><desc id="aqQpeDesc"></desc></svg>
+              </div>
+              <p class="thesis-verdict is-below" id="aqQpeVerdict"></p>
+              <p class="thesis-source" id="aqQpeSource"></p>
+            </article>
+          </div>
+
+          <p class="thesis-caveat" data-i18n-html="aq.thesis.caveat"></p>
+        </section>
+      </section>
     </main>
 
     <div class="result-popup" id="resultPopup" role="dialog" aria-modal="true" aria-labelledby="resultPopupTitle" hidden>
@@ -434,6 +677,7 @@
   </div>
 
   <script src="i18n.js"></script>
+  <script src="aqft.js"></script>
   <script src="app.js"></script>
   <script src="tour.js"></script>
 </body>

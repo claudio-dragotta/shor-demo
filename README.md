@@ -16,7 +16,8 @@ La demo pubblica è disponibile su
 
 Nel percorso ideale si seguono sovrapposizione, moltiplicazione modulare controllata, QFT
 inversa, misura, approssimazione con frazioni continue e calcolo dei fattori tramite MCD.
-Le tre configurazioni sono:
+Un pannello apre il blocco della QFT inversa e ne mostra tutte le rotazioni controllate, per
+il registro dell'istanza scelta. Le tre configurazioni sono:
 
 | N | a | count | ordine | picchi teorici (arrotondati) | P(fattori) ideale |
 |---:|---:|---:|---:|---|---:|
@@ -46,9 +47,9 @@ Il laboratorio rumoroso mantiene visibile la baseline ideale e permette di studi
 - sovrarotazione coerente sulle porte fisiche a un qubit (`SX/X`); le `RZ` sono trattate
   come aggiornamenti virtuali del frame e non ricevono durata o rumore.
 
-Il preset **Rumore off** disattiva tutti i canali: da lì si può abilitarne uno solo e
-attribuire la variazione osservata a quel meccanismo, mantenendo invariati circuito, budget
-di shot e seed radice.
+Con il preset **Personalizzato** si può tenere attivo un solo canale e attribuire la
+variazione osservata a quel meccanismo, mantenendo invariati circuito, budget di shot e seed
+radice.
 
 Oltre al rendimento di fattorizzazione vengono riportati massa sui picchi, massa sui picchi
 utili, entropia, distanza di variazione totale e distanza/fedeltà di Hellinger. Queste metriche
@@ -90,8 +91,11 @@ Aprire <http://localhost:8501>. La documentazione OpenAPI è disponibile in loca
 
 Il pulsante **Tour guidato** nell'intestazione accompagna la demo un passo alla volta:
 evidenzia un pannello, spiega a cosa serve e aziona i comandi al posto dell'utente. Lo stesso
-copione (`frontend/tour.js`, testi in `frontend/i18n.js` sotto `tour.*`) produce anche il video
-muto di circa due minuti:
+copione (`frontend/tour.js`, testi in `frontend/i18n.js` sotto `tour.*`; le tappe della scheda
+03 hanno i testi in `frontend/aqft.js`) produce anche il video muto di circa tre minuti, in 26
+tappe: circuito ideale, laboratorio del rumore, curve della tesi e, prima del cartello finale,
+le otto tappe sulla QFT approssimata (grado da 7 a 1, costo, perché su N=15 non si perde nulla,
+confronto live sotto UC1, curva resa–grado, risultato M15).
 
 | Indirizzo | Effetto |
 |---|---|
@@ -99,12 +103,72 @@ muto di circa due minuti:
 | `/?tour=video&lang=en` | video in inglese |
 | `/?tour=guida` | tour con i pulsanti Avanti/Indietro |
 | `&ritmo=1.2` | allunga tutti i tempi del 20% (da 0.5 a 3) |
+| `&copione=presentazione` | video per la discussione di laurea (17 tappe, 1:42, massimo 1:50): scelta di N (15, 21, un numero libero, un N risolto classicamente), circuito passo per passo, Shor senza e con rumore, QFT approssimata |
+| `&copione=passaggi` | N = 15 stadio per stadio (13 tappe, 1:46): QFT piena e AQFT affiancate con le sfere di Bloch, senza e con rumore, poi la resa |
+| `&copione=n15` | Solo N = 15 (15 tappe, 1:44): in ogni scheda si vede ingrandito che N = 15, si esegue il circuito e si leggono il significato del risultato e il tasso di successo: senza rumore, con il rumore UC1 e con la QFT approssimata |
+| `&copione=aqft` | video breve (13 tappe, circa 1:30): circuito classico senza rumore e la sua resa, poi QFT approssimata e confronto sotto UC1 |
+
+### Modalità presentazione
+
+`/?presentazione=1` (attiva da sola con `copione=presentazione` e `copione=aqft`) nasconde le
+metriche di contorno e la provenienza: TVD, Hellinger, entropia, tabelle di provenienza, righe
+con file e SHA. Restano circuito, rese, intervalli e confronti. Un N scelto a mano è indicato
+come «numero libero». Nulla viene tolto dalla demo: senza il parametro si vede tutto.
 
 Per registrare conviene la demo **in locale**, dove l'esperimento rumoroso dura pochi secondi;
 su Render la prima simulazione può superare i due minuti. La pagina prepara i calcoli, poi
 mostra «Pronto · premi Invio»: si avvia la registrazione dello schermo (Win+Alt+R oppure OBS),
 si mette il browser a schermo intero (F11) e si preme Invio. Esc interrompe. Il primo e
 l'ultimo secondo si tagliano in montaggio.
+
+## Scheda 03 · QFT approssimata
+
+La terza scheda applica al circuito della demo (`N=15, a=7, n_count=8`) il troncamento della
+campagna M15 della tesi: nella QFT inversa finale si tengono solo le rotazioni controllate con
+distanza `j − m ≤ k`. `k = 7` è la QFT piena (28 rotazioni), `k = 1` ne tiene 7.
+
+| Sezione | Da dove vengono i numeri |
+|---|---|
+| Circuito, rotazioni tolte | `aqft_backend.rotazioni(k)` |
+| Costo compilato (CX, RZ, SX/X, profondità) | compilazione live, stessa base e seed del laboratorio |
+| Effetto senza rumore | statevector esatto a 12 qubit per ogni `k` |
+| Confronto con rumore | Aer live, stesso modello illustrativo del laboratorio, seed indipendenti |
+| Curva resa–grado | `precomputed/aqft_curva.json`, da `precalcola_aqft.py` |
+| Risultati della tesi | `precomputed/aqft_tesi.json`, estratti dagli artefatti M15 da `estrai_dati_aqft.py` |
+
+Garanzie verificate dai test:
+
+- a `k = 7` il circuito compilato ha lo SHA-256 canonico della tesi
+  `c7f4cf3bc1735dce9d5b56d8e09686ee4ab43cabead65e734ea23d5a50f4ba2c` ed è identico, bit per
+  bit nella memoria degli shot, al braccio rumoroso del laboratorio;
+- su N=15 la distribuzione ideale non cambia per nessun `k` (TVD < 1e-12): i valori misurati
+  sono 0, 64, 128, 192, i bit c0…c5 valgono sempre 0 e delle 28 rotazioni agisce soltanto
+  c6 → c7, tenuta da ogni `k ≥ 1`;
+- in generale l'AQFT di grado `k` restituisce `y` con certezza se e solo se `2^(n−1−k)` divide
+  `y` (verificato per ogni `y` con `n = 2…7`); con fasi `j/6` (N=21) il troncamento costa resa.
+
+Il rumore live **non** è quello di M15 (snapshot FakeSherbrooke, porte ECR): i numeri della
+sezione «Dalla tesi» vanno citati, quelli live mostrano il meccanismo.
+
+Il pannello «Stadio per stadio» affianca il circuito con QFT piena e quello con AQFT, con lo
+stato ridotto esatto di ogni qubit a ogni stadio (matrice densità per tratti, `POST
+/api/aqft/bloch`). Senza rumore le sfere coincidono; con il rumore, dopo la QFT, le frecce
+dell'AQFT restano più lunghe (test G01–G06). Tutti i gradi da k=1 a k=7 con i preset sono
+precalcolati in `precomputed/aqft_bloch.json` (`precalcola_aqft_bloch.py`): su Render ogni
+voce costerebbe circa due minuti di simulazione, e la vista risponde invece all'istante.
+
+Rigenerare i dati precalcolati:
+
+```bash
+python precalcola_aqft.py          # ~6 minuti, 4096 shot per punto
+python estrai_dati_aqft.py         # richiede il repository della tesi in ../..
+```
+
+Aer usa `seed + i` per lo shot `i`: i seed di bracci e punti sono distanziati più del numero
+di shot, così i campioni restano indipendenti. La QFT piena della scheda 03 usa la stessa
+regola del campione rumoroso del laboratorio (`seed + 1 000 003`): con lo stesso seed, gli
+stessi shot e lo stesso rumore, «QFT piena con rumore» ha lo stesso valore nelle due schede
+(test D02).
 
 ## Test
 
@@ -127,7 +191,15 @@ La suite controlla:
 - truth table esaustiva dei moltiplicatori Beauregard usati per `N=21` e `N=35`, inclusa
   la pulizia di registro ausiliario e ancilla;
 - confronto end-to-end della QPE Beauregard con la legge teorica (TVD inferiore a
-  `1,4e-9` nei casi coperti).
+  `1,4e-9` nei casi coperti);
+- QFT approssimata (`tests/test_aqft.py`): operatore contro la QFT di Qiskit e la DFT,
+  limite rigoroso sull'errore di troncamento, teorema di esattezza, Shor N=15 per ogni base e
+  registro, fasi non esatte, ogni canale di rumore, readout contro formula analitica,
+  matrice densità esatta, identità con il laboratorio, contratto HTTP, dati M15.
+
+`python -m pytest -m "not slow"` salta le simulazioni a matrice densità (alcuni minuti).
+Con la demo avviata, `node tests/e2e_aqft.mjs` verifica la scheda 03 in un browser vero
+(richiede Playwright: `npm install playwright`).
 
 ## API v3
 
@@ -197,15 +269,17 @@ completi e disabilitazione della documentazione OpenAPI in produzione.
 I moduli Python sono copie locali (“vendored”) del progetto di tesi. La superficie HTTP v3
 espone esclusivamente le tre istanze validate. N=15 mantiene il limite di 2048 shot; N=21/35
 sono protette da un limite generale di 128 shot, un solo worker Aer concorrente e timeout del
-sottoprocesso; su N=35 il rumore quantistico abbassa il limite a 32. Numeri arbitrari restano
-fuori dal contratto pubblico.
+sottoprocesso; su N=35 il rumore quantistico abbassa il limite a 32. Il simulatore ideale accetta anche
+un altro N fra 4 e 47, segnalato come «non validato»; il laboratorio del rumore e
+`POST /api/experiment` restano limitati alle tre istanze validate.
 
 L'aritmetica Beauregard è ora validata separatamente per tutti i moltiplicatori non banali
 usati dalle istanze `N=21` (`2`, `4`, `16`) e `N=35` (`6`), su entrambi i rami del controllo,
 per ogni input valido e con ancilla puliti. Anche le distribuzioni QPE complete coincidono con
 la legge teorica (`TVD=1,38e-9` per `N=21, r=6`; `2,50e-13` per `N=35, r=2`). Queste istanze
-sono ora esposte con limiti più stretti. La validazione aritmetica non rende retroattivamente
-validi i risultati rumorosi storici, che vanno rigenerati.
+sono ora esposte con limiti più stretti. La validazione aritmetica non rende validi i
+risultati rumorosi prodotti con il circuito precedente: le campagne della tesi sono state
+rigenerate con il circuito corretto.
 
 Il costo è misurato nello stesso ambiente bloccato da `requirements.txt`: con Qiskit 2.5.0,
 `optimization_level=2`, `seed_transpiler=20260819` e base `rz/sx/x/cx`, il circuito
@@ -230,6 +304,8 @@ confrontate direttamente con la v2 senza essere rigenerate.
 | `api_backend.py` | Esperimento ideale/rumoroso, metriche e intervalli di confidenza |
 | `shor_core.py` | Circuiti validati N=15/21/35 e post-processing usati dall'API |
 | `beauregard.py` | Aritmetica modulare validata usata da N=21/35 |
+| `aqft_backend.py` | QFT approssimata: circuito, costo, distribuzioni ideali, confronto rumoroso |
+| `precalcola_aqft.py`, `estrai_dati_aqft.py` | Dati precalcolati della scheda 03 |
 | `shor_general.py` | Costruzione condivisa dei tre preset e percorso locale per input generici |
 | `frontend/` | Interfaccia HTML/CSS/JavaScript |
 | `tests/` | Regressioni scientifiche N=15/21/35 e contratto API |

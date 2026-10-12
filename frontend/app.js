@@ -10,6 +10,11 @@
     35: Object.freeze({ N: 35, a: 6, nCount: 12, order: 2, factors: [5, 7], maxShots: 128, dimension: 4096, peaks: [0, 2048], usefulPeaks: [2048], idealYield: .5, randomFloor: 675 / 4096 }),
   });
   const $ = (id) => document.getElementById(id);
+  /* Modalita' presentazione: ?presentazione=1, oppure i video brevi del tour. Nasconde
+     metriche di contorno e provenienza (CSS body.presentazione); la demo resta completa. */
+  const PRESENTAZIONE = /[?&](presentazione|presentation)=1\b/.test(window.location.search)
+    || /[?&]copione=(presentazione|aqft|passaggi|n15)\b/.test(window.location.search);
+  if (PRESENTAZIONE) document.body.classList.add("presentazione");
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const t = (key, values = null) => window.I18N.t(key, values);
 
@@ -235,9 +240,20 @@
     const idealYield = Number.isFinite(instance.idealYield) ? instance.idealYield : null;
     const twoShot = idealYield == null ? null : 1 - (1 - idealYield) ** 2;
     const blochOk = state.ideal.info?.bloch_ok !== false;
-    $("unvalidatedBadge").hidden = state.ideal.info ? state.ideal.info.validated !== false : !!INSTANCES[instance.N];
+    const libero = state.ideal.info ? state.ideal.info.validated === false : !INSTANCES[instance.N];
+    $("unvalidatedBadge").hidden = !libero;
+    // In presentazione l'N scelto a mano e' "numero libero": stessa informazione, senza
+    // l'etichetta tecnica. Il titolo del pannello non deve dire "validata" accanto al badge.
+    const badgeTesto = $("unvalidatedBadge").querySelector("b");
+    badgeTesto.dataset.i18n = PRESENTAZIONE ? "badge.free" : "badge.unvalidated";
+    badgeTesto.textContent = t(badgeTesto.dataset.i18n);
+    const kicker = $("idealControlsTitle").previousElementSibling;
+    kicker.dataset.i18n = libero ? "ideal.kicker.free" : "ideal.kicker";
+    kicker.textContent = t(kicker.dataset.i18n);
     $("instanceABadge").textContent = `a = ${instance.a ?? "—"}`;
-    $("instanceCountBadge").textContent = t("badge.qubits", { n: instance.nCount });
+    $("instanceCountBadge").textContent = instance.nCount == null
+      ? t("badge.qubits", { n: "—" }).replace(/\s*qubits?$/, "")
+      : t("badge.qubits", { n: instance.nCount });
     $("theoreticalPeaks").textContent = peaks.length ? peaks.join(" · ") : "—";
     const spacing = M / instance.order;
     $("peakExplanation").innerHTML = t("prob.peaks.help", {
@@ -270,6 +286,28 @@
     resetPipeline();
     updateShotBudget();
     updateSnapshot();
+    renderQftPanel(instance);
+  }
+
+  /* Il blocco QFT⁻¹ del circuito, aperto e pieno: lo stesso disegno della scheda 03
+     (aqft.js), con tutte le rotazioni del registro dell'istanza scelta. Finche' il
+     backend non ha detto quanti qubit di conteggio servono, non si disegna nulla. */
+  function renderQftPanel(instance) {
+    const svg = $("qftSvg");
+    const n = Number(instance.nCount);
+    if (!Number.isInteger(n) || n < 2 || !window.ShorAqft?.disegnaQftInversa) {
+      $("qftChip").textContent = "—";
+      svg.replaceChildren();
+      return;
+    }
+    const rotazioni = (n * (n - 1)) / 2;
+    const swap = Math.floor(n / 2);
+    $("qftChip").textContent = t("qft.chip", { n, rot: rotazioni });
+    window.ShorAqft.disegnaQftInversa(svg, {
+      n, k: n - 1,
+      titolo: t("qft.svgTitle", { n }),
+      descrizione: t("qft.svgDesc", { swap, rot: rotazioni }),
+    });
   }
 
   function updateShotBudget() {
@@ -376,6 +414,8 @@
       let bloch;
       if (info.bloch_ok) {
         const query = new URLSearchParams({ N: String(info.N), a: String(info.a), n_count: String(info.n_count), stage: String(target) });
+        // Il tour video puo' fissare il seme della misura, per mostrare un esito preciso.
+        if (semeMisuraTour !== null && info.stages[target]?.kind === "measure") query.set("seed", String(semeMisuraTour));
         bloch = await apiJSON(`/api/bloch?${query}`, { signal: controller.signal });
       } else {
         const stage = info.stages[target];
@@ -457,7 +497,7 @@
     return `hsl(${hue} 78% 68%)`;
   }
 
-  function renderCircuit(info, bloch, targetId = "circuitSvg") {
+  function renderCircuit(info, bloch, targetId = "circuitSvg", opzioni = {}) {
     const svg = $(targetId);
     const instance = currentInstance();
     clearSvg(
@@ -530,7 +570,7 @@
         const yTop = yOf(0) - 17;
         const boxHeight = yOf(nCount - 1) - yOf(0) + 34;
         svg.append(svgNode("rect", { x: x - 31, y: yTop, width: 62, height: boxHeight, rx: 9, class: `c-gate${activeClass}`, stroke: index === current ? "var(--amber)" : "var(--pink)" }));
-        svg.append(svgNode("text", { x, y: yTop + boxHeight / 2, class: "c-gate-label", transform: `rotate(-90 ${x} ${yTop + boxHeight / 2})` }, "QFT⁻¹"));
+        svg.append(svgNode("text", { x, y: yTop + boxHeight / 2, class: "c-gate-label", transform: `rotate(-90 ${x} ${yTop + boxHeight / 2})` }, opzioni.etichettaQft || "QFT⁻¹"));
       } else if (stage.kind === "measure") {
         for (let q = 0; q < nCount; q += 1) {
           svg.append(svgNode("rect", { x: x - 14, y: yOf(q) - 14, width: 28, height: 28, rx: 6, class: `c-gate${activeClass}`, stroke: index === current ? "var(--amber)" : "var(--green)" }));
@@ -596,6 +636,7 @@
     return { numerator: best.numerator / divisor, denominator: best.denominator / divisor };
   }
 
+  let semeMisuraTour = null;
   let resultPopupTimer = null;
   let resultPopupOpener = null;
 
@@ -704,7 +745,8 @@
     state.cost = null;
     updateNoiseAnatomy();
     try {
-      state.cost = await apiJSON(`/api/circuit-cost?N=${N}`);
+      const costo = await apiJSON(`/api/circuit-cost?N=${N}`);
+      state.cost = costo && costo.counts ? costo : null;   // N risolto classicamente: niente circuito
     } catch (error) {
       state.cost = null;
     }
@@ -1159,7 +1201,8 @@
         if (state.tesi) renderQecChart(state.tesi.qec);
       });
     });
-    $("shotsInput").addEventListener("change", updateSnapshot);
+    // Senza la freccia updateSnapshot riceveva l'evento al posto della configurazione.
+    $("shotsInput").addEventListener("change", () => updateSnapshot());
     $("seedInput").addEventListener("change", () => { normalizedSeed(); updateSnapshot(); });
     $("seedLockInput").addEventListener("change", refreshNoiseUI);
     $("newRealizationBtn").addEventListener("click", () => {
@@ -2071,7 +2114,34 @@
       return state.ideal.bloch?.measured_shot || null;
     },
     scheda: (nome) => activateTab(nome),
+    // Scelta del numero, come farebbe l'utente: menu per i preset, "Altro…" per gli altri.
+    numero: (N) => {
+      const preset = Boolean(INSTANCES[N]);
+      $("instanceSelect").value = preset ? String(N) : "altro";
+      $("customNField").hidden = preset;
+      $("customNInput").value = preset ? "" : String(N);
+      selectInstance(N);
+    },
+    apriAltro: () => {
+      $("instanceSelect").value = "altro";
+      $("customNField").hidden = false;
+      $("customNInput").value = "";
+    },
+    digita: (testo) => { $("customNInput").value = String(testo); },
+    confermaNumero: () => $("customNInput").dispatchEvent(new Event("change")),
+    avvia: () => $("playStageBtn").click(),
+    istanzaPronta: () => Boolean(state.ideal.info) || Boolean(state.ideal.classical),
+    shotRumore: (n) => { $("shotsInput").value = String(n); $("shotsInput").dispatchEvent(new Event("change")); },
+    preset: (nome) => applyPreset(nome),
+    // La scheda 03 disegna con la stessa funzione del laboratorio il circuito N=15
+    // con le sfere di uno stadio; cambia solo l'etichetta della trasformata finale.
+    disegnaCircuito: async (svgId, stadio, etichettaQft) => {
+      const info = await ensureBlochInfo();
+      renderCircuit(info, stadio, svgId, { etichettaQft });
+      return info.stages.length;
+    },
     vistaRumore: (modo) => setBlochMode(modo),
+    semeMisura: (seme) => { semeMisuraTour = seme; },
     stadioRumore: (indice) => { stopNoisePlayback(); setBlochStage(indice); },
     dettaglioRumore: (aperto) => mostraDettaglioRumore(aperto),
     esperimento: () => runExperiment(),

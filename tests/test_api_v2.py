@@ -61,9 +61,24 @@ def test_large_instance_uses_exact_sample_instead_of_exponential_bloch_view() ->
 
 
 @pytest.mark.parametrize("N", [14, 33, 91])
-def test_non_validated_instances_are_rejected(N: int) -> None:
-    assert client.get("/api/factor", params={"N": N}).status_code == 400
+def test_non_validated_instances_never_reach_the_live_experiment(N: int) -> None:
     assert client.post("/api/experiment", json=_payload(N=N)).status_code == 422
+
+
+def test_factor_accepts_free_n_but_marks_it_not_validated() -> None:
+    """/api/factor apre ai numeri fuori dai tre preset (pre-processing classico e
+    struttura del circuito), dichiarandoli non validati; oltre il tetto li rifiuta."""
+    pari = client.get("/api/factor", params={"N": 14})
+    assert pari.status_code == 200
+    assert pari.json()["done"] is True and pari.json()["validated"] is False
+
+    libero = client.get("/api/factor", params={"N": 33})
+    assert libero.status_code == 200
+    assert libero.json()["done"] is False and libero.json()["validated"] is False
+
+    assert client.get("/api/factor", params={"N": 91}).status_code == 400
+    for N in (15, 21, 35):
+        assert client.get("/api/factor", params={"N": N}).json()["validated"] is True
 
 
 @pytest.mark.parametrize("N", [21, 35])
@@ -352,3 +367,11 @@ def test_experiment_smoke_returns_complete_and_coherent_factor_results() -> None
     assert comparison["factor_yield_delta"] == pytest.approx(expected_delta)
     assert comparison["factor_yield_delta_ci"]["low"] <= expected_delta
     assert comparison["factor_yield_delta_ci"]["high"] >= expected_delta
+
+
+def test_circuit_cost_of_a_classically_solved_number_is_not_an_error() -> None:
+    """N pari: niente circuito, ma la richiesta e' legittima (la demo la fa scegliendo N)."""
+    r = client.get("/api/circuit-cost", params={"N": 14})
+    assert r.status_code == 200
+    assert r.json()["classical"] is True and "counts" not in r.json()
+    assert client.get("/api/circuit-cost", params={"N": 15}).json()["counts"]["cx"] == 224

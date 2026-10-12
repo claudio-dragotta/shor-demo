@@ -165,7 +165,7 @@ button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity:
   top: 10px;
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   margin-bottom: 18px;
   padding: 6px;
@@ -586,6 +586,7 @@ footer p { margin: 0; }
    frecce fra gli stadi e le sezioni che descrivono un circuito assente. */
 #idealPanel.is-classical .ideal-layout,
 #idealPanel.is-classical .math-panel,
+#idealPanel.is-classical .qft-panel,
 #idealPanel.is-classical .probability-strip,
 #idealPanel.is-classical .explanation-panel,
 #idealPanel.is-classical .instance-badges,
@@ -844,3 +845,165 @@ html:has(body.tour-video)::-webkit-scrollbar { display: none; }
   .tour-testi h2 { font-size: 1.2rem; }
   .tour-testi p:not(.kicker) { font-size: .98rem; }
 }
+
+
+/* ---------- Scheda 03 · QFT approssimata (aqft.js) ----------
+   Colori dai token: la QFT piena e' viola come la baseline ideale del laboratorio,
+   l'AQFT ciano, le rotazioni tolte restano visibili ma spente. */
+.aq-hero .panel-intro { max-width: 980px; }
+.aq-degree { margin-top: 20px; padding: 16px 18px 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--bg-soft); }
+.aq-degree-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 18px; }
+.aq-degree-head label { color: var(--muted); font-size: .74rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.aq-degree-head label b { margin-left: 8px; color: var(--cyan); font-size: 1rem; letter-spacing: 0; text-transform: none; }
+.aq-range { width: 100%; margin: 14px 0 4px; accent-color: var(--cyan); }
+.aq-ticks { position: relative; height: 14px; margin: 0 9px; color: var(--dim); font: 700 .66rem/1 var(--mono); }
+.aq-ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.aq-ticks span:last-child { transform: translateX(-85%); }
+.aq-ticks .is-active { color: var(--cyan); }
+
+.aq-circuit-svg { min-width: 1080px; }
+.aq-block { fill: rgba(188, 195, 225, .035); }
+.aq-block-label { fill: var(--dim); font: 700 9px var(--mono); letter-spacing: .06em; }
+.aq-swap line, .aq-swap path { stroke: var(--pink); stroke-width: 1.6; fill: none; }
+.aq-h rect { fill: var(--surface-solid); stroke: var(--violet); stroke-width: 1.5; }
+.aq-h text { fill: var(--violet); font: 800 11px var(--sans); }
+.aq-cp { transition: opacity .25s ease; }
+.aq-cp-line { stroke: var(--cyan); stroke-width: 1.5; }
+.aq-cp-dot { fill: var(--cyan); }
+.aq-cp-box { fill: var(--surface-solid); stroke: var(--cyan); stroke-width: 1.4; }
+.aq-cp-text { fill: var(--cyan); font: 700 7.6px var(--mono); }
+.aq-cp.is-removed { opacity: .32; }
+.aq-cp.is-removed .aq-cp-line { stroke: var(--dim); stroke-dasharray: 2 3; }
+.aq-cp.is-removed .aq-cp-dot { fill: var(--dim); }
+.aq-cp.is-removed .aq-cp-box { stroke: var(--dim); stroke-dasharray: 2 2; }
+.aq-cp.is-removed .aq-cp-text { fill: var(--dim); }
+.aq-cp-strike { stroke: var(--red); stroke-width: 1.6; }
+.aq-only-ring { fill: none; stroke: var(--amber); stroke-width: 2; stroke-dasharray: 5 3; }
+.aq-only-label { fill: var(--amber); font: 700 9px var(--mono); }
+
+.aq-distance-wrap { padding: 14px 22px 4px; overflow-x: auto; }
+.aq-distance { display: grid; grid-template-columns: repeat(7, minmax(108px, 1fr)); gap: 8px; min-width: 780px; }
+.aq-dist { display: grid; gap: 3px; padding: 10px 11px; border: 1px solid var(--line); border-top: 3px solid var(--cyan); border-radius: 10px; background: var(--bg-soft); transition: opacity .2s ease, border-color .2s ease; }
+.aq-dist b { color: var(--text); font: 800 .8rem/1.2 var(--mono); }
+.aq-dist span { color: var(--muted); font: 500 .66rem/1.35 var(--mono); }
+.aq-dist small { margin-top: 3px; color: var(--cyan); font: 750 .6rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.aq-dist.is-removed { border-top-color: var(--line-strong); opacity: .5; }
+.aq-dist.is-removed small { color: var(--red); }
+
+.aq-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.aq-cost { display: grid; gap: 12px; margin-top: 16px; }
+.aq-cost-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) 76px; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--bg-soft); }
+.aq-cost-row.is-main { border-color: rgba(100, 213, 223, .45); }
+.aq-cost-label { color: var(--muted); font: 750 .64rem/1.3 var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+.aq-cost-bars { display: grid; gap: 5px; }
+.aq-cost-bar { display: grid; grid-template-columns: 46px minmax(0, 1fr) 42px; align-items: center; gap: 8px; }
+.aq-cost-bar small { color: var(--dim); font: 700 .6rem/1 var(--mono); }
+.aq-cost-bar b { color: var(--text); font-size: .72rem; text-align: right; }
+.aq-cost-track { height: 9px; border-radius: 5px; background: rgba(188, 195, 225, .08); overflow: hidden; }
+.aq-cost-track i { display: block; height: 100%; border-radius: 5px; transition: width .3s ease; }
+.aq-cost-bar.is-full i { background: var(--violet); }
+.aq-cost-bar.is-aqft i { background: var(--cyan); }
+.aq-cost-delta { color: var(--dim); font-size: .74rem; font-weight: 800; text-align: right; }
+.aq-cost-delta.is-down { color: var(--green); }
+
+.aq-ideal-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.kpi-aqft { border-top: 2px solid var(--cyan); }
+.aq-phase { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); }
+.aq-phase h3 { margin: 0 0 6px; font: 600 .98rem/1.25 var(--serif); }
+.aq-phase p { margin: 6px 0 0; color: var(--muted); font-size: .74rem; line-height: 1.6; }
+.aq-phase .aq-phase-n21 { color: var(--dim); font-size: .7rem; }
+.aq-bits { display: grid; gap: 4px; margin: 10px 0 6px; }
+.aq-bits-row { display: grid; grid-template-columns: 88px 64px auto; align-items: center; gap: 10px; }
+.aq-bits-phase, .aq-bits-val { color: var(--muted); font-size: .68rem; }
+.aq-bits-cells { display: inline-grid; grid-template-columns: repeat(8, 26px); gap: 3px; }
+.aq-bits-cells i { display: grid; height: 22px; place-items: center; border: 1px solid var(--line); border-radius: 5px; color: var(--dim); font: 700 .7rem/1 var(--mono); font-style: normal; }
+.aq-bits-cells i.is-one { border-color: var(--amber); color: var(--amber); background: var(--amber-soft); }
+.aq-bits-cells i.is-high:not(.is-one) { border-color: rgba(245, 173, 78, .35); }
+.aq-bits-cells i.is-label { height: 14px; border: 0; color: var(--dim); font-size: .58rem; }
+.aq-bits-head { margin-bottom: -2px; }
+
+.aq-run-config { margin-top: 16px; }
+.aq-run-config .preset-group { margin-right: auto; }
+.aq-swatch { background: var(--cyan); }
+.aq-kpis { grid-template-columns: repeat(5, 1fr); }
+.aq-kpi-verdict { color: var(--muted) !important; font-style: italic; }
+.aq-grid { stroke: rgba(188, 195, 225, .12); stroke-width: 1; }
+.aq-zero { stroke: var(--line-strong); stroke-width: 1.4; }
+.aq-axis { fill: var(--muted); font: 10px var(--mono); }
+.aq-axis-ecr { fill: var(--dim); }
+.aq-axis-ideal { fill: var(--violet); }
+.aq-axis-floor { fill: var(--red); }
+.aq-peak { stroke: var(--amber); stroke-width: 1.2; stroke-dasharray: 4 5; opacity: .7; }
+.aq-bar-full { fill: var(--violet); opacity: .78; }
+.aq-bar-aqft { fill: var(--cyan); opacity: .85; }
+.aq-line-ideal { stroke: var(--violet); stroke-width: 1.4; stroke-dasharray: 6 5; }
+.aq-line-floor { stroke: var(--red); stroke-width: 1.4; stroke-dasharray: 6 5; opacity: .85; }
+.aq-curve-sel { fill: rgba(100, 213, 223, .08); stroke: rgba(100, 213, 223, .35); }
+.aq-dot-sel { stroke: var(--text); stroke-width: 2; }
+.aq-ecr-bar { fill: rgba(188, 195, 225, .14); }
+.aq-ecr-bar.is-selected { fill: rgba(100, 213, 223, .28); }
+.aq-n15-line { fill: none; stroke: var(--amber); stroke-width: 2.2; }
+.aq-n15-err { stroke: var(--amber); stroke-width: 1.2; opacity: .75; }
+.aq-n15-dot { fill: var(--amber); }
+.aq-n15-dot.is-selected { fill: var(--cyan); stroke: var(--text); stroke-width: 1.5; }
+.aq-forest { min-width: 480px; }
+.aq-forest-n { fill: var(--amber); font-weight: 700; }
+.aq-forest-ci { stroke: var(--dim); stroke-width: 2; }
+.aq-forest-ci.is-sig { stroke: var(--green); }
+.aq-forest-dot { fill: var(--dim); }
+.aq-forest-dot.is-sig { fill: var(--green); }
+.aq-table-wrap { margin-top: 12px; overflow-x: auto; }
+.aq-table { width: 100%; min-width: 420px; border-collapse: collapse; font: 500 .7rem/1.5 var(--mono); }
+.aq-table th { padding: 6px 8px; border-bottom: 1px solid var(--line-strong); color: var(--dim); font-weight: 750; text-align: right; }
+.aq-table td { padding: 5px 8px; border-bottom: 1px solid var(--line); color: var(--muted); text-align: right; }
+.aq-table th:first-child, .aq-table td:first-child { text-align: left; }
+.aq-table tr.is-selected td { color: var(--cyan); font-weight: 750; }
+.aq-table tr.is-full td { color: var(--violet); }
+#aqThesisPanel .aq-two { gap: 16px; }
+
+@media (max-width: 1100px) {
+  .aq-two { grid-template-columns: minmax(0, 1fr); }
+  .aq-kpis { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .aq-ideal-kpis { grid-template-columns: minmax(0, 1fr); }
+  .aq-cost-row { grid-template-columns: minmax(0, 1fr); }
+  .aq-cost-delta { text-align: left; }
+  .aq-bits-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Un figlio di griglia ha min-width:auto, cioe' la larghezza minima del suo contenuto:
+   un grafico con min-width dentro uno scroller allargava cosi' l'intero pannello su
+   telefono (pagina larga 706 px su 390) invece di scorrere nel proprio riquadro. */
+.tab-panel > *, .thesis-panel > *, .aq-two > *, .noise-stage-view > * { min-width: 0; }
+.aq-run-config .button { white-space: normal; }
+
+/* ---------- Modalita' presentazione (?presentazione=1, video brevi) ----------
+   Nasconde le metriche di contorno e la provenienza: restano il circuito, le rese
+   e i confronti. Niente viene tolto dalla demo, solo dalla vista. */
+body.presentazione .kpi:has(#tvdValue),
+body.presentazione .kpi:has(#hellingerValue),
+body.presentazione .details-grid > section:has(#metricsTitle),
+body.presentazione .provenance,
+body.presentazione #thesisPanel .thesis-card:has(#entropyPanel),
+body.presentazione .thesis-source,
+body.presentazione #aqIdealKpis .kpi:nth-child(3),
+body.presentazione .aq-phase-n21 { display: none !important; }
+body.presentazione #experimentResults .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+body.presentazione .details-grid { grid-template-columns: minmax(0, 1fr); }
+body.presentazione #aqIdealKpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  body.presentazione #experimentResults .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Scheda 03 · stadio per stadio: due circuiti affiancati, QFT piena e AQFT. */
+.aq-stadi-controls { margin-top: 16px; }
+.aq-stadi-view { margin-top: 12px; }
+.aq-stadi-view .circuit-panel { box-shadow: none; }
+.aq-len-full { color: var(--violet); font-family: var(--mono); }
+.aq-len-aqft { color: var(--cyan); font-family: var(--mono); }
+
+/* Selettore del numero: un solo blocco, cosi' il tour lo puo' inquadrare e ingrandire. */
+.instance-picker { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; }
+/* Con lo zoom il riquadro dello spotlight insegue l'elemento senza ritardo. */
+body.tour-zoom .tour-luce { transition: none; }
