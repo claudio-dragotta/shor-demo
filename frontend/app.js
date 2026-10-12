@@ -494,7 +494,8 @@
 
   function phaseColor(x, y) {
     const hue = ((((Math.atan2(y, x) / (2 * Math.PI)) + 1) % 1) * 360).toFixed(0);
-    return `hsl(${hue} 78% 68%)`;
+    // Sui temi chiari le frecce vanno scurite, altrimenti spariscono sul bianco.
+    return `hsl(${hue} 78% ${temaCorrente() === "scuro" ? 68 : 40}%)`;
   }
 
   function renderCircuit(info, bloch, targetId = "circuitSvg", opzioni = {}) {
@@ -2090,6 +2091,45 @@
     updateBlochButtons();
   }
 
+  /* Selettore del tema: scuro (base), chiaro, carta (lo stile dei video). La scelta resta
+     salvata nel browser; ?tema=chiaro|carta nell'indirizzo la impone. */
+  const CHIAVE_TEMA = "shor-demo-tema";
+  function temaCorrente() { return document.documentElement.dataset.tema || "scuro"; }
+  function renderThemeToggle() {
+    document.querySelectorAll("#themeToggle [data-tema]").forEach((b) => {
+      const attivo = b.dataset.tema === temaCorrente();
+      b.classList.toggle("is-active", attivo);
+      b.setAttribute("aria-checked", String(attivo));
+      b.tabIndex = attivo ? 0 : -1;
+    });
+  }
+  function applicaTema(nome) {
+    if (!["scuro", "chiaro", "editoriale"].includes(nome) || nome === temaCorrente()) return;
+    if (nome === "scuro") delete document.documentElement.dataset.tema;
+    else document.documentElement.dataset.tema = nome;
+    try { window.localStorage.setItem(CHIAVE_TEMA, nome); } catch (error) { /* non bloccante */ }
+    renderThemeToggle();
+    // Le frecce di Bloch e i grafici hanno colori calcolati in JS: si ridisegna tutto.
+    window.I18N.refresh();
+  }
+  function setupThemeToggle() {
+    const gruppo = $("themeToggle");
+    if (!gruppo) return;
+    gruppo.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-tema]");
+      if (b) applicaTema(b.dataset.tema);
+    });
+    gruppo.addEventListener("keydown", (e) => {
+      if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+      e.preventDefault();
+      const temi = ["scuro", "chiaro", "editoriale"];
+      const i = temi.indexOf(temaCorrente()) + (e.key === "ArrowRight" ? 1 : -1);
+      applicaTema(temi[(i + temi.length) % temi.length]);
+      gruppo.querySelector(".is-active")?.focus();
+    });
+    renderThemeToggle();
+  }
+
   function setupLangToggle() {
     $("langToggle").addEventListener("click", () => window.I18N.toggle());
     window.I18N.onChange(relocalize);
@@ -2157,6 +2197,7 @@
   function init() {
     window.I18N.applyStatic();
     setupLangToggle();
+    setupThemeToggle();
     setupTabs();
     setupIdealControls();
     setupResultPopup();

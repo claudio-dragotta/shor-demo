@@ -7,6 +7,18 @@
   <title>Shor Lab — simulatore ideale e rumore</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>⚛</text></svg>">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="temi.css">
+  <script>
+    /* Tema scelto (?tema=scuro|chiaro|carta, poi l'ultima scelta salvata): si applica prima del
+       primo disegno, cosi' la pagina non lampeggia nel tema scuro. */
+    (function () {
+      var nomi = { scuro: "scuro", chiaro: "chiaro", carta: "editoriale", editoriale: "editoriale" };
+      var scelto = null;
+      try { scelto = new URLSearchParams(location.search).get("tema"); } catch (e) {}
+      if (!nomi[scelto]) { try { scelto = localStorage.getItem("shor-demo-tema"); } catch (e) {} }
+      if (nomi[scelto] && nomi[scelto] !== "scuro") document.documentElement.dataset.tema = nomi[scelto];
+    })();
+  </script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent" data-i18n="skip">Vai al contenuto</a>
@@ -16,6 +28,11 @@
       <h1 data-i18n-html="header.title">Dal circuito ideale al <em>rumore quantistico</em></h1>
       <!-- La bandiera mostrata e' quella della lingua ATTIVA; premerla passa all'altra. -->
       <div class="header-actions">
+      <div class="theme-toggle" id="themeToggle" role="radiogroup" data-i18n-attr="aria-label:theme.aria">
+        <button type="button" role="radio" data-tema="scuro" data-i18n-attr="aria-label:theme.dark, title:theme.dark"><i class="theme-swatch swatch-scuro"></i></button>
+        <button type="button" role="radio" data-tema="chiaro" data-i18n-attr="aria-label:theme.light, title:theme.light"><i class="theme-swatch swatch-chiaro"></i></button>
+        <button type="button" role="radio" data-tema="editoriale" data-i18n-attr="aria-label:theme.paper, title:theme.paper"><i class="theme-swatch swatch-carta"></i></button>
+      </div>
       <button class="tour-toggle" id="tourBtn" type="button" data-i18n="tour.btn">Tour guidato</button>
       <button class="lang-toggle" id="langToggle" type="button"
               data-i18n-attr="aria-label:lang.switchTo, title:lang.switchTo">

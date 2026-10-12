@@ -1007,3 +1007,14 @@ body.presentazione #aqIdealKpis { grid-template-columns: repeat(2, minmax(0, 1fr
 .instance-picker { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; }
 /* Con lo zoom il riquadro dello spotlight insegue l'elemento senza ritardo. */
 body.tour-zoom .tour-luce { transition: none; }
+
+/* Selettore del tema: tre campioni nell'intestazione, accanto alla lingua. */
+.theme-toggle { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); }
+.theme-toggle button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid transparent; border-radius: 999px; background: transparent; cursor: pointer; }
+.theme-toggle button:hover { border-color: var(--line-strong); }
+.theme-toggle button.is-active { border-color: var(--amber); background: var(--amber-soft); }
+.theme-toggle button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.theme-swatch { display: block; width: 16px; height: 16px; border-radius: 999px; border: 1px solid rgba(127, 127, 127, .55); }
+.swatch-scuro { background: linear-gradient(135deg, #10121e 50%, #f5ad4e 50%); }
+.swatch-chiaro { background: linear-gradient(135deg, #ffffff 50%, #5b3fd1 50%); }
+.swatch-carta { background: linear-gradient(135deg, #fbfaf6 50%, #b8670b 50%); }

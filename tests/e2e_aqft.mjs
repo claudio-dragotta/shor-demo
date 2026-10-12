@@ -117,18 +117,14 @@ verifica("scheda tradotta anche nella barra", (await page.textContent("#aqftTab"
 
 // --- tema chiaro e telefono ---------------------------------------------------
 {
-  const { existsSync } = await import("node:fs");
-  const candidati = ["../../video_demo/tema_video_chiaro.css", "../../tema_video_chiaro.css"]
-    .map((rel) => new URL(rel, import.meta.url))
-    .filter((u) => existsSync(u));
-  if (candidati.length) {
-    const { readFileSync } = await import("node:fs");
-    await page.addStyleTag({ content: readFileSync(candidati[0], "utf8") });
-    const sfondo = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    verifica("tema chiaro applicato", /255, 255, 255/.test(sfondo), sfondo);
-  } else {
-    verifica("tema chiaro applicato", true, "foglio non trovato, controllo saltato");
-  }
+  // Il tema si sceglie dal selettore nell'intestazione: chiaro, poi di nuovo scuro.
+  await page.click('#themeToggle [data-tema="chiaro"]');
+  const sfondo = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  verifica("tema chiaro applicato", /255, 255, 255/.test(sfondo), sfondo);
+  const angoliChiaro = await page.locator("#aqCircuitSvg .aq-cp.is-kept").count();
+  verifica("circuito AQFT ridisegnato nel tema chiaro", angoliChiaro > 0, String(angoliChiaro));
+  await page.click('#themeToggle [data-tema="scuro"]');
+  verifica("ritorno al tema scuro", await page.evaluate(() => !document.documentElement.dataset.tema));
 }
 
 // --- preset "Solo readout": come nel laboratorio, T1/T2 spenti ---------------------

@@ -22,6 +22,10 @@
       "skip": "Vai al contenuto",
       "header.title": "Dal circuito ideale al <em>rumore quantistico</em>",
       "lang.switchTo": "Switch to English",
+      "theme.aria": "Tema della pagina",
+      "theme.dark": "Tema scuro",
+      "theme.light": "Tema chiaro",
+      "theme.paper": "Tema carta (come il video)",
 
       "tabs.aria": "Sezioni della demo",
       "tab.ideal.name": "Simulatore ideale",
@@ -498,6 +502,10 @@
       "skip": "Skip to content",
       "header.title": "From the ideal circuit to <em>quantum noise</em>",
       "lang.switchTo": "Passa all'italiano",
+      "theme.aria": "Page theme",
+      "theme.dark": "Dark theme",
+      "theme.light": "Light theme",
+      "theme.paper": "Paper theme (as in the video)",
 
       "tabs.aria": "Demo sections",
       "tab.ideal.name": "Ideal simulator",
@@ -1038,6 +1046,8 @@
     other: () => (current === "it" ? "en" : "it"),
     setLang,
     toggle: () => setLang(current === "it" ? "en" : "it"),
+    // Ridisegna tutto senza cambiare lingua (lo usa il cambio di tema).
+    refresh: () => { applyStatic(); listeners.forEach((fn) => fn(current)); },
     onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     applyStatic,
     formatNumber,

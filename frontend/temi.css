@@ -1,0 +1,219 @@
+/* Temi alternativi della demo, scelti dal selettore nell'intestazione: chiaro e carta.
+   Sono gli stessi colori dei video dimostrativi, applicati solo quando
+   <html data-tema="..."> li chiede; senza attributo resta il tema scuro di style.css. */
+html[data-tema="chiaro"],
+html[data-tema="editoriale"] { color-scheme: light;
+  --bg: #ffffff;
+  --bg-soft: #ffffff;
+  --surface: #ffffff;
+  --surface-solid: #ffffff;
+  --surface-raised: #f4f6fa;
+  --line: rgba(31, 41, 51, .14);
+  --line-strong: rgba(31, 41, 51, .38);
+  --text: #1f2933;
+  --muted: #47515e;
+  --dim: #5b6573;
+  --amber: #b8670b;
+  --amber-soft: rgba(184, 103, 11, .08);
+  --violet: #5b3fd1;
+  --pink: #b8327f;
+  --cyan: #0b7a85;
+  --green: #12805a;
+  --red: #c42d4a;
+  --blue: #125c97;
+  --shadow: none; }
+html[data-tema="chiaro"],
+html[data-tema="editoriale"],
+html[data-tema="chiaro"] body,
+html[data-tema="editoriale"] body { background: #ffffff !important; }
+html[data-tema="chiaro"] body::before,
+html[data-tema="editoriale"] body::before { display: none !important; }
+html[data-tema="chiaro"] .panel,
+html[data-tema="editoriale"] .panel,
+html[data-tema="chiaro"] .circuit-panel,
+html[data-tema="editoriale"] .circuit-panel,
+html[data-tema="chiaro"] .anatomy-panel,
+html[data-tema="editoriale"] .anatomy-panel { background: #ffffff !important; box-shadow: none !important; }
+html[data-tema="chiaro"] .c-wire,
+html[data-tema="editoriale"] .c-wire { stroke: rgba(31, 41, 51, .42) !important; }
+html[data-tema="chiaro"] .c-gate,
+html[data-tema="editoriale"] .c-gate { fill: #ffffff !important; stroke: rgba(31, 41, 51, .55) !important; }
+html[data-tema="chiaro"] .c-sphere,
+html[data-tema="editoriale"] .c-sphere { fill: #ffffff !important; stroke: rgba(31, 41, 51, .5) !important; }
+html[data-tema="chiaro"] .c-sphere-axis,
+html[data-tema="editoriale"] .c-sphere-axis { stroke: rgba(31, 41, 51, .28) !important; }
+html[data-tema="chiaro"] .ana-gate,
+html[data-tema="editoriale"] .ana-gate { fill: #ffffff !important; }
+html[data-tema="chiaro"] .ana-wire,
+html[data-tema="editoriale"] .ana-wire { stroke: rgba(31, 41, 51, .42) !important; }
+html[data-tema="chiaro"] .stage-chip,
+html[data-tema="editoriale"] .stage-chip { background: rgba(184, 103, 11, .08) !important; border-color: rgba(184, 103, 11, .45) !important; }
+html[data-tema="chiaro"] .tabs,
+html[data-tema="editoriale"] .tabs,
+html[data-tema="chiaro"] .tabs.is-stuck,
+html[data-tema="editoriale"] .tabs.is-stuck { background: #ffffff !important; box-shadow: none !important; }
+html[data-tema="chiaro"] .c-bloch-arrow,
+html[data-tema="editoriale"] .c-bloch-arrow { stroke-width: 3 !important; }
+html[data-tema="chiaro"] .stage-facts div,
+html[data-tema="editoriale"] .stage-facts div,
+html[data-tema="chiaro"] .pipeline li,
+html[data-tema="editoriale"] .pipeline li,
+html[data-tema="chiaro"] .run-config,
+html[data-tema="editoriale"] .run-config,
+html[data-tema="chiaro"] .noise-control,
+html[data-tema="editoriale"] .noise-control,
+html[data-tema="chiaro"] .snapshot,
+html[data-tema="editoriale"] .snapshot,
+html[data-tema="chiaro"] .cost-block,
+html[data-tema="editoriale"] .cost-block,
+html[data-tema="chiaro"] .kpi,
+html[data-tema="editoriale"] .kpi,
+html[data-tema="chiaro"] .chart-block,
+html[data-tema="editoriale"] .chart-block,
+html[data-tema="chiaro"] .details-grid > section,
+html[data-tema="editoriale"] .details-grid > section,
+html[data-tema="chiaro"] .thesis-card,
+html[data-tema="editoriale"] .thesis-card,
+html[data-tema="chiaro"] .provenance,
+html[data-tema="editoriale"] .provenance,
+html[data-tema="chiaro"] .anatomy-row,
+html[data-tema="editoriale"] .anatomy-row,
+html[data-tema="chiaro"] .probability-strip article,
+html[data-tema="editoriale"] .probability-strip article { background: #f6f7fa !important; }
+html[data-tema="chiaro"] .button-secondary,
+html[data-tema="editoriale"] .button-secondary,
+html[data-tema="chiaro"] .icon-button,
+html[data-tema="editoriale"] .icon-button,
+html[data-tema="chiaro"] .detail-toggle,
+html[data-tema="editoriale"] .detail-toggle,
+html[data-tema="chiaro"] .view-toggle,
+html[data-tema="editoriale"] .view-toggle { background: #f4f6fa !important; }
+html[data-tema="chiaro"] .button-secondary:not(:disabled):hover,
+html[data-tema="editoriale"] .button-secondary:not(:disabled):hover,
+html[data-tema="chiaro"] .icon-button:not(:disabled):hover,
+html[data-tema="editoriale"] .icon-button:not(:disabled):hover { background: #eceff5 !important; }
+html[data-tema="chiaro"] select,
+html[data-tema="editoriale"] select,
+html[data-tema="chiaro"] input[type="number"],
+html[data-tema="editoriale"] input[type="number"] { background: #ffffff !important; color: var(--text) !important; }
+html[data-tema="chiaro"] .button,
+html[data-tema="editoriale"] .button { color: #ffffff !important; box-shadow: none !important; }
+html[data-tema="chiaro"] .button-secondary,
+html[data-tema="editoriale"] .button-secondary { color: var(--text) !important; }
+html[data-tema="chiaro"] .preset.is-active,
+html[data-tema="editoriale"] .preset.is-active,
+html[data-tema="chiaro"] .view-option.is-active,
+html[data-tema="editoriale"] .view-option.is-active,
+html[data-tema="chiaro"] .pipeline li > span,
+html[data-tema="editoriale"] .pipeline li > span { color: #ffffff !important; }
+html[data-tema="chiaro"] .tab.is-active,
+html[data-tema="editoriale"] .tab.is-active { box-shadow: 0 2px 10px rgba(31,41,51,.08) !important; }
+html[data-tema="chiaro"] .result-popup,
+html[data-tema="editoriale"] .result-popup { background: rgba(240, 242, 246, .72) !important; }
+html[data-tema="chiaro"] .result-popup-card,
+html[data-tema="editoriale"] .result-popup-card { background: #ffffff !important; box-shadow: 0 18px 50px rgba(31,41,51,.18) !important; }
+html[data-tema="chiaro"] .tour-velo,
+html[data-tema="editoriale"] .tour-velo { background: rgba(255, 255, 255, .96) !important; }
+html[data-tema="chiaro"] .tour-luce,
+html[data-tema="editoriale"] .tour-luce { box-shadow: 0 0 0 200vmax rgba(236, 239, 244, .78), 0 0 26px rgba(184, 103, 11, .28) !important; }
+html[data-tema="chiaro"] .tour-barra,
+html[data-tema="editoriale"] .tour-barra { background: rgba(255, 255, 255, .98) !important; box-shadow: 0 14px 40px rgba(31,41,51,.16) !important; }
+html[data-tema="chiaro"] .tour-avanzamento,
+html[data-tema="editoriale"] .tour-avanzamento { background: rgba(184, 103, 11, .12) !important; }
+html[data-tema="chiaro"] .tour-avvio,
+html[data-tema="editoriale"] .tour-avvio { background: #ffffff !important; }
+html[data-tema="chiaro"] .tour-toggle,
+html[data-tema="editoriale"] .tour-toggle { border-color: rgba(184, 103, 11, .45) !important; }
+html[data-tema="chiaro"] .ana-ctrl,
+html[data-tema="editoriale"] .ana-ctrl { fill: rgba(31, 41, 51, .55); }
+html[data-tema="chiaro"] .ana-target,
+html[data-tema="editoriale"] .ana-target { stroke: rgba(31, 41, 51, .55); }
+html[data-tema="chiaro"] .aq-grid,
+html[data-tema="editoriale"] .aq-grid { stroke: rgba(31, 41, 51, .12) !important; }
+html[data-tema="chiaro"] .aq-block,
+html[data-tema="editoriale"] .aq-block { fill: rgba(31, 41, 51, .035) !important; }
+html[data-tema="chiaro"] .aq-ecr-bar,
+html[data-tema="editoriale"] .aq-ecr-bar { fill: rgba(31, 41, 51, .10) !important; }
+html[data-tema="chiaro"] .aq-ecr-bar.is-selected,
+html[data-tema="editoriale"] .aq-ecr-bar.is-selected { fill: rgba(11, 122, 133, .22) !important; }
+html[data-tema="chiaro"] .aq-cost-track,
+html[data-tema="editoriale"] .aq-cost-track { background: rgba(31, 41, 51, .08) !important; }
+html[data-tema="chiaro"] .aq-curve-sel,
+html[data-tema="editoriale"] .aq-curve-sel { fill: rgba(11, 122, 133, .07) !important; stroke: rgba(11, 122, 133, .35) !important; }
+html[data-tema="chiaro"] .aq-h rect,
+html[data-tema="editoriale"] .aq-h rect,
+html[data-tema="chiaro"] .aq-cp-box,
+html[data-tema="editoriale"] .aq-cp-box { fill: #ffffff !important; }
+html[data-tema="chiaro"] .aq-degree,
+html[data-tema="editoriale"] .aq-degree,
+html[data-tema="chiaro"] .aq-dist,
+html[data-tema="editoriale"] .aq-dist,
+html[data-tema="chiaro"] .aq-cost-row,
+html[data-tema="editoriale"] .aq-cost-row,
+html[data-tema="chiaro"] .aq-phase,
+html[data-tema="editoriale"] .aq-phase { background: #f6f7fa !important; }
+html[data-tema="chiaro"] .aq-cp.is-removed,
+html[data-tema="editoriale"] .aq-cp.is-removed { opacity: .45 !important; }
+
+/* --- Carta (stile della copertina) --- */
+html[data-tema="editoriale"] { --bg: #fbfaf6; --bg-soft: #fbfaf6; --surface: #ffffff; --surface-solid: #ffffff; --surface-raised: #f7f5ef;
+  --line: rgba(27, 36, 48, .12); --line-strong: rgba(27, 36, 48, .30);
+  --text: #1b2430; --muted: #4a5563; --dim: #6b7280;
+  --amber: #b8670b; --amber-soft: rgba(184, 103, 11, .08); --violet: #7a3fd1;
+  --serif: "TeX Gyre Pagella", "Palatino Linotype", Palatino, serif; }
+html[data-tema="editoriale"],
+html[data-tema="editoriale"] body { background: #fbfaf6 !important; }
+html[data-tema="editoriale"] body::after { content: ""; position: fixed; left: 0; top: 0; bottom: 0; width: 18px; background: #b8670b; z-index: 200; }
+html[data-tema="editoriale"] .panel,
+html[data-tema="editoriale"] .circuit-panel,
+html[data-tema="editoriale"] .anatomy-panel { background: #ffffff !important; border-color: #e6e2d8 !important; border-radius: 22px !important; }
+html[data-tema="editoriale"] .tabs,
+html[data-tema="editoriale"] .tabs.is-stuck { background: #fbfaf6 !important; }
+html[data-tema="editoriale"] .stage-facts div,
+html[data-tema="editoriale"] .pipeline li,
+html[data-tema="editoriale"] .run-config,
+html[data-tema="editoriale"] .noise-control,
+html[data-tema="editoriale"] .snapshot,
+html[data-tema="editoriale"] .cost-block,
+html[data-tema="editoriale"] .kpi,
+html[data-tema="editoriale"] .chart-block,
+html[data-tema="editoriale"] .details-grid > section,
+html[data-tema="editoriale"] .thesis-card,
+html[data-tema="editoriale"] .provenance,
+html[data-tema="editoriale"] .anatomy-row,
+html[data-tema="editoriale"] .probability-strip article,
+html[data-tema="editoriale"] .aq-degree,
+html[data-tema="editoriale"] .aq-dist,
+html[data-tema="editoriale"] .aq-cost-row,
+html[data-tema="editoriale"] .aq-phase { background: #fbfaf6 !important; border-color: #e6e2d8 !important; }
+html[data-tema="editoriale"] h1,
+html[data-tema="editoriale"] h2,
+html[data-tema="editoriale"] h3 { font-family: var(--serif) !important; }
+html[data-tema="editoriale"] .kicker { color: #b8670b !important; letter-spacing: .2em !important; }
+html[data-tema="editoriale"] .c-wire { stroke: rgba(27, 36, 48, .38) !important; }
+html[data-tema="editoriale"] .tour-velo { background: rgba(251, 250, 246, .97) !important; }
+html[data-tema="editoriale"] .tour-luce { border-color: #b8670b !important; box-shadow: 0 0 0 200vmax rgba(251, 250, 246, .80), 0 0 0 1px rgba(184,103,11,.25) !important; border-radius: 22px !important; }
+html[data-tema="editoriale"] .tour-barra { background: #ffffff !important; border: 1px solid #e6e2d8 !important; border-radius: 6px !important;
+  box-shadow: 0 10px 30px rgba(27,36,48,.08) !important; left: calc(50% + 9px) !important; }
+html[data-tema="editoriale"] .tour-avanzamento { height: 4px !important; background: rgba(184, 103, 11, .14) !important; }
+html[data-tema="editoriale"] .tour-avanzamento i { background: #b8670b !important; }
+html[data-tema="editoriale"] .tour-testi .kicker { color: #b8670b !important; font-weight: 700 !important; }
+html[data-tema="editoriale"] .tour-testi h2 { font-family: var(--serif) !important; font-weight: 600 !important; color: #1b2430 !important; }
+html[data-tema="editoriale"] .tour-testi p:not(.kicker) { color: #4a5563 !important; }
+html[data-tema="editoriale"] .tour .tour-cartello { text-align: left !important; left: 130px !important; right: 130px !important; width: auto !important; max-width: none !important;
+  top: 50% !important; transform: translateY(-50%) !important; animation: none !important; background: transparent !important; box-shadow: none !important; border: 0 !important; }
+html[data-tema="editoriale"] .tour .tour-cartello .kicker { color: #b8670b !important; margin: 0 0 30px !important; font-size: 20px !important; }
+html[data-tema="editoriale"] .tour .tour-cartello h2 { font-family: var(--serif) !important; font-weight: 600 !important; font-size: 92px !important; line-height: 1.06 !important; color: #1b2430 !important; max-width: 1550px !important; margin: 0 0 36px !important; text-align: left !important; }
+html[data-tema="editoriale"] .tour .tour-cartello p:not(.kicker) { margin: 0 !important; max-width: 1250px !important; color: #4a5563 !important; font-size: 31px !important; line-height: 1.45 !important; text-align: left !important;
+  border-top: 2px solid #b8670b; padding-top: 28px; }
+html[data-tema="editoriale"] .result-popup { background: rgba(251, 250, 246, .72) !important; }
+html[data-tema="editoriale"] .result-popup-card { border-color: #e6e2d8 !important; box-shadow: 0 18px 50px rgba(27,36,48,.12) !important; }
+html[data-tema="chiaro"], html[data-tema="editoriale"] { color-scheme: light; }
+html[data-tema="editoriale"] body::after { pointer-events: none; }
+html[data-tema="editoriale"] body { padding-left: 18px; }
+@media (max-width: 900px) { html[data-tema="editoriale"] body::after { width: 6px; } html[data-tema="editoriale"] body { padding-left: 6px; } }
+/* Fuori dal video il cartello del tour resta centrato come nel tema base. */
+html[data-tema="editoriale"] .tour:not(.is-video) .tour-cartello { left: 50% !important; right: auto !important; width: min(860px, calc(100vw - 32px)) !important; transform: translate(-50%, -50%) !important; }
+html[data-tema="editoriale"] .tour:not(.is-video) .tour-cartello h2 { font-size: clamp(2rem, 4vw, 3rem) !important; }
+html[data-tema="editoriale"] .tour:not(.is-video) .tour-cartello p:not(.kicker) { font-size: 1.15rem !important; }
+html[data-tema="editoriale"] .tour-barra { left: 50% !important; }
